@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"io"
+	"strings"
 
 	"ovh-terminal/internal/api"
 	"ovh-terminal/internal/commands"
@@ -65,6 +67,59 @@ var (
 			MarginTop(1)
 )
 
+// types and functions related to the menu pane
+type itemType int
+
+const (
+	typeNormal itemType = iota
+	typeHeader
+	typeSubHeader
+	typeServerItem
+)
+
+// List item implementation
+type listItem struct {
+	title    string
+	desc     string
+	itemType itemType
+	expanded bool
+	indent   int
+}
+
+func (i listItem) Title() string       { return i.title }
+func (i listItem) Description() string { return i.desc }
+func (i listItem) FilterValue() string { return i.title }
+
+type itemDelegate struct {
+	list.DefaultDelegate
+}
+
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	li, ok := item.(listItem)
+	if !ok {
+		return
+	}
+
+	indent := strings.Repeat("  ", li.indent)
+	title := indent + li.Title()
+
+	var style lipgloss.Style
+	if index == m.Index() {
+		style = selectedItemStyle
+	} else {
+		style = normalItemStyle
+	}
+
+	if li.itemType == typeHeader {
+		style = style.Bold(true)
+	}
+
+	fmt.Fprint(w, style.Render(title))
+	if li.desc != "" {
+		fmt.Fprint(w, "\n"+indent+"  "+dimmedStyle.Render(li.Description()))
+	}
+}
+
 type Model struct {
 	list          list.Model
 	viewport      viewport.Model
@@ -74,7 +129,8 @@ type Model struct {
 	statusMessage string
 	apiClient     *api.Client
 	activeCommand commands.Command
-	activePane    string // "menu" or "content"
+	activePane    string   // "menu" or "content"
+	serverList    []string // Cache for server hostnames
 }
 
 // CommandHandler is a function type that creates commands
@@ -83,16 +139,42 @@ type CommandHandler func(*api.Client) commands.Command
 // Initialize creates a new model with initial state
 func Initialize(client *api.Client) Model {
 	items := []list.Item{
-		listItem{title: "Me", desc: "Account information"},
-		listItem{title: "Servers", desc: "Manage dedicated servers"},
-		listItem{title: "Domains", desc: "Domain management"},
-		listItem{title: "Cloud Projects", desc: "Cloud project overview"},
-		listItem{title: "IP Management", desc: "IP address management"},
-		listItem{title: "Exit", desc: "Exit the application"},
+		listItem{
+			title:    "Account Information",
+			desc:     "",
+			itemType: typeHeader,
+			indent:   0,
+		},
+		listItem{
+			title:    "Me",
+			desc:     "View account details",
+			itemType: typeNormal,
+			indent:   1,
+		},
+		listItem{
+			title:    "Bare Metal Cloud",
+			desc:     "",
+			itemType: typeHeader,
+			indent:   0,
+		},
+		listItem{
+			title:    "Dedicated Servers",
+			desc:     "View and manage servers",
+			itemType: typeSubHeader,
+			expanded: false,
+			indent:   1,
+		},
+		listItem{
+			title:    "Exit",
+			desc:     "Exit the application",
+			itemType: typeNormal,
+		},
 	}
 
 	// Create custom delegate
-	delegate := list.NewDefaultDelegate()
+	delegate := itemDelegate{
+		DefaultDelegate: list.NewDefaultDelegate(),
+	}
 
 	// Style the list items
 	delegate.Styles.SelectedTitle = selectedItemStyle
@@ -208,27 +290,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activePane == "menu" {
 				if i := m.list.SelectedItem(); i != nil {
 					item := i.(listItem)
-					if item.title == "Exit" {
-						return m, tea.Quit
-					}
 
-					// Execute command if available
-					if handler, exists := commandHandlers[item.title]; exists {
-						m.activeCommand = handler(m.apiClient)
-						if output, err := m.activeCommand.Execute(); err != nil {
-							m.statusMessage = fmt.Sprintf("Error: %v", err)
-							m.viewport.SetContent(fmt.Sprintf("Failed to execute command: %v", err))
-						} else {
-							m.statusMessage = fmt.Sprintf("Executed: %s", item.title)
-							m.viewport.SetContent(output)
+					switch item.itemType {
+					case typeNormal:
+						if item.title == "Exit" {
+							return m, tea.Quit
 						}
-					} else {
-						m.statusMessage = fmt.Sprintf("Command not implemented: %s", item.title)
-						m.viewport.SetContent("This command is not implemented yet.")
+
+						// Execute command if available
+						if handler, exists := commandHandlers[item.title]; exists {
+							m.activeCommand = handler(m.apiClient)
+							if output, err := m.activeCommand.Execute(); err != nil {
+								m.statusMessage = fmt.Sprintf("Error: %v", err)
+								m.viewport.SetContent(fmt.Sprintf("Failed to execute command: %v", err))
+							} else {
+								m.statusMessage = fmt.Sprintf("Executed: %s", item.title)
+								m.viewport.SetContent(output)
+							}
+						} else {
+							m.statusMessage = fmt.Sprintf("Command not implemented: %s", item.title)
+							m.viewport.SetContent("This command is not implemented yet.")
+						}
+						// Switch to content pane after successful command
+						m.activePane = "content"
+						m.updateLayout()
+
+					case typeSubHeader:
+						// Handle expandable items
+						if item.title == "Dedicated Servers" {
+							return m, tea.Batch(
+								m.expandServers(),
+								func() tea.Msg { return statusMsg(fmt.Sprintf("Loading servers...")) },
+							)
+						}
+
+					case typeServerItem:
+						// When clicking a server, show its details
+						m.statusMessage = fmt.Sprintf("Selected server: %s", item.title)
+						// TODO: Implement server details command
+						m.activePane = "content"
+						m.updateLayout()
 					}
-					// Switch to content pane after successful command
-					m.activePane = "content"
-					m.updateLayout()
 				}
 			}
 		}
@@ -323,12 +425,57 @@ func (m Model) View() string {
 	return docStyle.Render(mainView)
 }
 
-// List item implementation
-type listItem struct {
-	title string
-	desc  string
+type statusMsg string
+
+func (m Model) expandServers() tea.Cmd {
+	return func() tea.Msg {
+		currentItems := m.list.Items()
+		var newItems []list.Item
+
+		for _, item := range currentItems {
+			li, ok := item.(listItem)
+			if !ok {
+				continue
+			}
+			newItems = append(newItems, li)
+
+			// Als dit het Dedicated Servers item is
+			if li.itemType == typeSubHeader && li.title == "Dedicated Servers" {
+				// Toggle expanded state
+				li.expanded = !li.expanded
+				newItems[len(newItems)-1] = li
+
+				if li.expanded {
+					// Fetch servers if expanded
+					servers, err := m.fetchServers()
+					if err != nil {
+						return statusMsg(fmt.Sprintf("Error loading servers: %v", err))
+					}
+
+					// Add server items as indented items
+					for _, server := range servers {
+						newItems = append(newItems, listItem{
+							title:    server,
+							desc:     "Dedicated server",
+							itemType: typeServerItem,
+							indent:   2,
+						})
+					}
+				}
+				// Als het item wordt ingeklapt, verwijderen we gewoon geen items
+				// de nieuwe lijst bevat dan automatisch geen child items meer
+			}
+		}
+
+		// Update the list
+		m.list.SetItems(newItems)
+		return statusMsg("Servers loaded")
+	}
 }
 
-func (i listItem) Title() string       { return i.title }
-func (i listItem) Description() string { return i.desc }
-func (i listItem) FilterValue() string { return i.title }
+func (m *Model) fetchServers() ([]string, error) {
+	if err := m.apiClient.Get("/dedicated/server", &m.serverList); err != nil {
+		return nil, fmt.Errorf("failed to fetch servers: %w", err)
+	}
+	return m.serverList, nil
+}
