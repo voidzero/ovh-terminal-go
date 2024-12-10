@@ -14,10 +14,11 @@ import (
 
 var (
 	// Base colors
-	primaryColor   = lipgloss.Color("#7CE38B")
-	secondaryColor = lipgloss.Color("#5A5A5A")
-	selectedBg     = lipgloss.Color("#2D79C7")
-	borderColor    = lipgloss.Color("#444444")
+	primaryColor        = lipgloss.Color("#7CE38B")
+	secondaryColor      = lipgloss.Color("#5A5A5A")
+	selectedBg          = lipgloss.Color("#2D79C7")
+	activeBorderColor   = lipgloss.Color("#888888")
+	inactiveBorderColor = lipgloss.Color("#444444")
 
 	// Document style (main container)
 	docStyle = lipgloss.NewStyle().
@@ -33,7 +34,7 @@ var (
 	// Menu styles
 	menuStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(borderColor).
+			BorderForeground(activeBorderColor).
 			PaddingLeft(1).
 			PaddingRight(1).
 			Width(32)
@@ -41,7 +42,7 @@ var (
 	// Content styles
 	contentStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(borderColor).
+			BorderForeground(inactiveBorderColor).
 			PaddingLeft(2).
 			PaddingRight(2).
 			MarginLeft(2)
@@ -73,6 +74,7 @@ type Model struct {
 	statusMessage string
 	apiClient     *api.Client
 	activeCommand commands.Command
+	activePane    string // "menu" or "content"
 }
 
 // CommandHandler is a function type that creates commands
@@ -112,10 +114,11 @@ func Initialize(client *api.Client) Model {
 	vp.Style = contentStyle
 
 	return Model{
-		list:      l,
-		viewport:  vp,
-		content:   "Welcome to OVH Terminal Client!\nUse arrow keys to navigate and Enter to select an option.",
-		apiClient: client,
+		list:       l,
+		viewport:   vp,
+		content:    "Welcome to OVH Terminal Client!\nUse arrow keys to navigate and Enter to select an option.",
+		apiClient:  client,
+		activePane: "menu", // Start with menu active
 	}
 }
 
@@ -150,6 +153,19 @@ func (m *Model) updateLayout() {
 	m.list.SetSize(menuWidth-2, m.height-verticalSpace)
 	m.viewport.Width = contentWidth
 	m.viewport.Height = m.height - verticalSpace
+
+	// Update border styles
+	m.updateBorderStyles()
+}
+
+func (m *Model) updateBorderStyles() {
+	if m.activePane == "menu" {
+		menuStyle = menuStyle.BorderForeground(activeBorderColor)
+		contentStyle = contentStyle.BorderForeground(inactiveBorderColor)
+	} else {
+		menuStyle = menuStyle.BorderForeground(inactiveBorderColor)
+		contentStyle = contentStyle.BorderForeground(activeBorderColor)
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -165,31 +181,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 
-		case "enter":
-			if i := m.list.SelectedItem(); i != nil {
-				item := i.(listItem)
-				if item.title == "Exit" {
-					return m, tea.Quit
-				}
+		case "tab":
+			// Toggle between panes
+			if m.activePane == "menu" {
+				m.activePane = "content"
+			} else {
+				m.activePane = "menu"
+			}
+			m.updateBorderStyles()
+			return m, nil
 
-				// Execute command if available
-				if handler, exists := commandHandlers[item.title]; exists {
-					m.activeCommand = handler(m.apiClient)
-					if output, err := m.activeCommand.Execute(); err != nil {
-						m.statusMessage = fmt.Sprintf("Error: %v", err)
-						m.viewport.SetContent(fmt.Sprintf("Failed to execute command: %v", err))
-					} else {
-						m.statusMessage = fmt.Sprintf("Executed: %s", item.title)
-						m.viewport.SetContent(output)
+		case "up", "k", "down", "j":
+			// Only handle navigation keys for active pane
+			if m.activePane == "menu" {
+				var cmd tea.Cmd
+				m.list, cmd = m.list.Update(msg)
+				return m, cmd
+			} else if m.activePane == "content" {
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
+
+		case "enter":
+			// Only handle enter when menu is active
+			if m.activePane == "menu" {
+				if i := m.list.SelectedItem(); i != nil {
+					item := i.(listItem)
+					if item.title == "Exit" {
+						return m, tea.Quit
 					}
-					// Update layout after changing status
+
+					// Execute command if available
+					if handler, exists := commandHandlers[item.title]; exists {
+						m.activeCommand = handler(m.apiClient)
+						if output, err := m.activeCommand.Execute(); err != nil {
+							m.statusMessage = fmt.Sprintf("Error: %v", err)
+							m.viewport.SetContent(fmt.Sprintf("Failed to execute command: %v", err))
+						} else {
+							m.statusMessage = fmt.Sprintf("Executed: %s", item.title)
+							m.viewport.SetContent(output)
+						}
+					} else {
+						m.statusMessage = fmt.Sprintf("Command not implemented: %s", item.title)
+						m.viewport.SetContent("This command is not implemented yet.")
+					}
+					// Switch to content pane after successful command
+					m.activePane = "content"
 					m.updateLayout()
-				} else {
-					m.statusMessage = fmt.Sprintf("Command not implemented: %s", item.title)
-					m.viewport.SetContent("This command is not implemented yet.")
 				}
-				// Update layout after changing status
-				m.updateLayout()
 			}
 		}
 
