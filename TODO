@@ -1,0 +1,45 @@
+// TODO
+/*
+
+OVH Terminal Client - Go Implementation
+=====================================
+
+TODO List:
+---------
+
+1. UI Bugfixes
+   - Fix compile errors in UI model
+   - Ensure proper rendering of menu and content
+   - Fix layout and visibility issues
+   - Validate window size handling
+
+2. Command Integration
+   - Implement MeCommand in UI context
+   - Add loading indicator for API calls
+   - Show error messages in viewport
+   - Format command output in viewport
+   - Handle command state and updates
+
+3. UI Improvements 
+   - Add vim-style navigation (j/k, g/G)
+   - Implement mouse selection/scrolling
+   - Add help screen (trigger with '?')
+   - Show current account in status bar
+   - Add keyboard shortcut hints
+
+4. Extra Features
+   - Implement account switching
+   - Add data refresh ('r' key)
+   - Add search in lists
+   - Support configurable colors/theme
+   - Add configuration reload
+
+Current status:
+-------------
+- Config handling works
+- Logging system operational
+- API client functional
+- Basic UI structure present
+- Working on UI rendering and integration
+
+*/

@@ -1,0 +1,38 @@
+# OVH Terminal Client Configuration
+
+# General preferences
+[general]
+default_account = "main"           # Which account to use at startup
+log_level = "info"                 # debug, info, warn, error
+log_file = "logs/ovh-terminal.log" # Set to "none" to disable file logging
+log_console = false                # Whether to also log to stderr
+
+# UI preferences
+[ui]
+theme = "default"     # default, dark, light
+compact_view = false  # compact or detailed view
+status_bar = true     # show the status bar
+refresh_interval = 30 # interval for auto-refresh in seconds
+
+# Account configurations
+[accounts.main]
+name = "Main Account"
+endpoint = "ovh-eu"
+app_key = "your_app_key_here"
+app_secret = "your_app_secret_here"
+consumer_key = "your_consumer_key_here"
+
+[accounts.backup]
+name = "Backup Account"
+endpoint = "ovh-eu"
+app_key = "backup_app_key_here"
+app_secret = "backup_app_secret_here"
+consumer_key = "backup_consumer_key_here"
+
+# Key bindings
+[keybindings]
+quit = ["q", "C-c"]
+help = ["F1"]
+refresh = ["r"]
+switch_account = ["a"]
+toggle_view = ["v"]
