@@ -7,6 +7,7 @@ import (
 
 	"ovh-terminal/internal/api"
 	"ovh-terminal/internal/commands"
+	"ovh-terminal/internal/logger"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -18,6 +19,7 @@ var (
 	// Base colors
 	primaryColor        = lipgloss.Color("#7CE38B")
 	secondaryColor      = lipgloss.Color("#5A5A5A")
+	selectedFg          = lipgloss.Color("#FFFF22")
 	selectedBg          = lipgloss.Color("#2D79C7")
 	activeBorderColor   = lipgloss.Color("#888888")
 	inactiveBorderColor = lipgloss.Color("#444444")
@@ -51,7 +53,7 @@ var (
 
 	selectedItemStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("231")).
+				Foreground(selectedFg).
 				Background(selectedBg)
 
 	normalItemStyle = lipgloss.NewStyle().
@@ -75,15 +77,18 @@ const (
 	typeHeader
 	typeSubHeader
 	typeServerItem
+	typeTreeItem
+	typeTreeLastItem
 )
 
 // List item implementation
 type listItem struct {
-	title    string
-	desc     string
-	itemType itemType
-	expanded bool
-	indent   int
+	title      string
+	desc       string
+	itemType   itemType
+	expanded   bool
+	indent     int
+	selectable bool
 }
 
 func (i listItem) Title() string       { return i.title }
@@ -100,24 +105,31 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 		return
 	}
 
-	indent := strings.Repeat("  ", li.indent)
-	title := indent + li.Title()
+	indent := strings.Repeat(" ", li.indent*2)
+	var symbol string
 
-	var style lipgloss.Style
-	if index == m.Index() {
-		style = selectedItemStyle
-	} else {
-		style = normalItemStyle
+	// Tree structure symbols
+	var prefix string
+	switch li.itemType {
+	case typeTreeItem:
+		prefix = "├─ "
+	case typeTreeLastItem:
+		prefix = "└─ "
+	case typeHeader:
+		if li.expanded {
+			symbol = "[-] "
+		} else {
+			symbol = "[+] "
+		}
 	}
 
-	if li.itemType == typeHeader {
-		style = style.Bold(true)
+	title := indent + prefix + symbol + li.Title()
+	style := normalItemStyle
+	if index == m.Index() {
+		style = selectedItemStyle
 	}
 
 	fmt.Fprint(w, style.Render(title))
-	if li.desc != "" {
-		fmt.Fprint(w, "\n"+indent+"  "+dimmedStyle.Render(li.Description()))
-	}
 }
 
 type Model struct {
@@ -140,40 +152,36 @@ type CommandHandler func(*api.Client) commands.Command
 func Initialize(client *api.Client) Model {
 	items := []list.Item{
 		listItem{
-			title:    "Account Information",
-			desc:     "",
-			itemType: typeHeader,
-			indent:   0,
+			title:      "Account Information",
+			itemType:   typeHeader,
+			expanded:   false,
+			selectable: true,
 		},
 		listItem{
-			title:    "Me",
-			desc:     "View account details",
-			itemType: typeNormal,
-			indent:   1,
+			title:      "Bare Metal Cloud",
+			itemType:   typeHeader,
+			expanded:   false,
+			selectable: true,
 		},
 		listItem{
-			title:    "Bare Metal Cloud",
-			desc:     "",
-			itemType: typeHeader,
-			indent:   0,
+			title:      "Web Cloud",
+			itemType:   typeHeader,
+			expanded:   false,
+			selectable: true,
 		},
 		listItem{
-			title:    "Dedicated Servers",
-			desc:     "View and manage servers",
-			itemType: typeSubHeader,
-			expanded: false,
-			indent:   1,
-		},
-		listItem{
-			title:    "Exit",
-			desc:     "Exit the application",
-			itemType: typeNormal,
+			title:      "Exit",
+			desc:       "Exit the application",
+			itemType:   typeNormal,
+			selectable: true,
 		},
 	}
 
 	// Create custom delegate
 	delegate := itemDelegate{
-		DefaultDelegate: list.NewDefaultDelegate(),
+		DefaultDelegate: list.DefaultDelegate{
+			ShowDescription: false,
+		},
 	}
 
 	// Style the list items
@@ -181,6 +189,14 @@ func Initialize(client *api.Client) Model {
 	delegate.Styles.SelectedDesc = dimmedStyle
 	delegate.Styles.NormalTitle = normalItemStyle
 	delegate.Styles.NormalDesc = dimmedStyle.Copy()
+
+	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
+		UnsetPadding().
+		UnsetMargins()
+
+	delegate.Styles.NormalTitle = delegate.Styles.SelectedTitle.
+		UnsetPadding().
+		UnsetMargins()
 
 	// Create the list
 	l := list.New(items, delegate, 0, 0)
@@ -195,6 +211,9 @@ func Initialize(client *api.Client) Model {
 	vp := viewport.New(0, 0)
 	vp.Style = contentStyle
 
+	// Configure logger
+	logger.Log.Configure("debug", "logs/ovh-terminal.log", false)
+
 	return Model{
 		list:       l,
 		viewport:   vp,
@@ -206,7 +225,7 @@ func Initialize(client *api.Client) Model {
 
 // Map of available commands
 var commandHandlers = map[string]CommandHandler{
-	"Me": func(client *api.Client) commands.Command {
+	"Account Information": func(client *api.Client) commands.Command {
 		return commands.NewMeCommand(client)
 	},
 }
@@ -216,28 +235,177 @@ func (m Model) Init() tea.Cmd {
 	return tea.EnterAltScreen
 }
 
-// Voeg een helper functie toe om de layout te updaten
+// Add a helper function to update the layout
 func (m *Model) updateLayout() {
 	if !m.ready {
 		return
 	}
 
-	menuWidth := 34 // Fixed menu width including borders
+	// Start met 1 voor de titel
+	totalItems := 1
+	logger.Log.Debug("Layout update - Starting count", "title", "OVH Terminal Client")
+
+	// Count root items and expanded children
+	currentItems := m.list.Items()
+	for _, item := range currentItems {
+		if i, ok := item.(listItem); ok {
+			if i.indent == 0 {
+				totalItems++
+				logger.Log.Debug("Layout update - Counting root item",
+					"title", i.title,
+					"type", i.itemType,
+					"expanded", i.expanded)
+
+				if i.itemType == typeHeader && i.expanded {
+					switch i.title {
+					case "Account Information", "Bare Metal Cloud", "Web Cloud":
+						totalItems += 2
+						logger.Log.Debug("Layout update - Reserved space for children",
+							"parent", i.title,
+							"spaces", 2)
+					}
+				}
+			}
+		}
+	}
+
+	// Add space for borders and padding
+	borderSpace := 4 // top border, bottom border, padding
+	totalSpace := totalItems + borderSpace
+
+	logger.Log.Debug("Layout update - Space calculation",
+		"items", totalItems,
+		"border_space", borderSpace,
+		"total_space", totalSpace)
+
+	menuWidth := 34
 	contentWidth := m.width - menuWidth - 14
 
-	// Calculate vertical space
-	verticalSpace := 4
-	if m.statusMessage != "" {
-		verticalSpace += 2
+	logger.Log.Debug("Layout update - Dimensions",
+		"window_width", m.width,
+		"window_height", m.height,
+		"total_space_needed", totalSpace,
+		"content_width", contentWidth)
+
+	// Start met window height als basis
+	effectiveHeight := m.height
+
+	// Bij uitgeklapte menu's, gebruik de window height plus ruimte voor extra items
+	hasExpandedMenus := false
+	for _, item := range currentItems {
+		if i, ok := item.(listItem); ok {
+			if i.itemType == typeHeader && i.expanded {
+				hasExpandedMenus = true
+				break
+			}
+		}
+	}
+
+	if hasExpandedMenus {
+		// Bij uitklappen: behoud minimaal de window height
+		if effectiveHeight < m.height {
+			effectiveHeight = m.height
+		}
+		logger.Log.Debug("Layout update - Using window height for expanded menu",
+			"height", effectiveHeight)
 	}
 
 	// Update dimensions
-	m.list.SetSize(menuWidth-2, m.height-verticalSpace)
+	verticalSpace := 4
+	verticalSpace += 2
+
+	// Log final dimensions
+	logger.Log.Debug("Layout update - Final dimensions",
+		"menu_width", menuWidth-2,
+		"effective_height", effectiveHeight,
+		"vertical_space", verticalSpace,
+		"final_height", effectiveHeight-verticalSpace)
+
+	// Set sizes with the effective height
+	m.list.SetSize(menuWidth-2, effectiveHeight-verticalSpace)
 	m.viewport.Width = contentWidth
-	m.viewport.Height = m.height - verticalSpace
+	m.viewport.Height = effectiveHeight - verticalSpace
 
 	// Update border styles
 	m.updateBorderStyles()
+
+	if m.content != "" {
+		m.viewport.SetContent(m.content)
+	}
+}
+
+func (m *Model) updateMenuItems() {
+	var updatedItems []list.Item
+
+	// Get current items to check their state
+	currentItems := m.list.Items()
+
+	// Build new list
+	for _, item := range currentItems {
+		curr := item.(listItem)
+
+		if curr.indent == 0 {
+			updatedItems = append(updatedItems, curr)
+
+			// If this is an expanded header, add its children
+			if curr.itemType == typeHeader && curr.expanded {
+				switch curr.title {
+				case "Account Information":
+					updatedItems = append(updatedItems,
+						listItem{
+							title:      "My information",
+							desc:       "View and manage my current information",
+							itemType:   typeTreeItem,
+							indent:     1,
+							selectable: true,
+						},
+						listItem{
+							title:      "API information",
+							desc:       "Information about applications and credentials",
+							itemType:   typeTreeLastItem,
+							indent:     1,
+							selectable: true,
+						},
+					)
+				case "Bare Metal Cloud":
+					updatedItems = append(updatedItems,
+						listItem{
+							title:      "Dedicated Servers",
+							desc:       "View and manage servers",
+							itemType:   typeTreeItem,
+							indent:     1,
+							selectable: true,
+						},
+						listItem{
+							title:      "Virtual Private Servers",
+							desc:       "",
+							itemType:   typeTreeLastItem,
+							indent:     1,
+							selectable: true,
+						},
+					)
+				case "Web Cloud":
+					updatedItems = append(updatedItems,
+						listItem{
+							title:      "Domain names",
+							desc:       "View and manage domain names",
+							itemType:   typeTreeItem,
+							indent:     1,
+							selectable: true,
+						},
+						listItem{
+							title:      "Hosting plans",
+							desc:       "",
+							itemType:   typeTreeLastItem,
+							indent:     1,
+							selectable: true,
+						},
+					)
+				}
+			}
+		}
+	}
+	m.list.SetItems(updatedItems)
 }
 
 func (m *Model) updateBorderStyles() {
@@ -288,48 +456,61 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Only handle enter when menu is active
 			if m.activePane == "menu" {
-				if i := m.list.SelectedItem(); i != nil {
-					item := i.(listItem)
+				// Get the current list and selected index
+				selectedItem := m.list.SelectedItem().(listItem)
 
-					switch item.itemType {
-					case typeNormal:
-						if item.title == "Exit" {
-							return m, tea.Quit
+				switch selectedItem.itemType {
+				case typeHeader:
+					// Toggle the expanded state
+					newExpanded := !selectedItem.expanded
+
+					// Create new base list with updated state
+					var updatedItems []list.Item
+					for _, item := range m.list.Items() {
+						if curr, ok := item.(listItem); ok {
+							if curr.title == selectedItem.title && curr.itemType == typeHeader {
+								curr.expanded = newExpanded
+							}
+							// Only add if it's a header or non-child item
+							if curr.indent == 0 {
+								updatedItems = append(updatedItems, curr)
+							}
 						}
+					}
+					// Set the updated base list
+					m.list.SetItems(updatedItems)
 
-						// Execute command if available
-						if handler, exists := commandHandlers[item.title]; exists {
+					// Update menu to show/hide children
+					m.updateMenuItems()
+
+					// Update layout to handle size changes
+					m.updateLayout()
+
+					m.statusMessage = fmt.Sprintf("Menu %s %s", selectedItem.title,
+						map[bool]string{true: "expanded", false: "collapsed"}[newExpanded])
+
+				case typeTreeItem, typeTreeLastItem:
+					// Execute commands for specific items
+					if selectedItem.title == "My information" {
+						if handler, exists := commandHandlers["Account Information"]; exists {
 							m.activeCommand = handler(m.apiClient)
 							if output, err := m.activeCommand.Execute(); err != nil {
 								m.statusMessage = fmt.Sprintf("Error: %v", err)
 								m.viewport.SetContent(fmt.Sprintf("Failed to execute command: %v", err))
 							} else {
-								m.statusMessage = fmt.Sprintf("Executed: %s", item.title)
+								m.statusMessage = fmt.Sprintf("Executed: %s", selectedItem.title)
 								m.viewport.SetContent(output)
 							}
-						} else {
-							m.statusMessage = fmt.Sprintf("Command not implemented: %s", item.title)
-							m.viewport.SetContent("This command is not implemented yet.")
+							m.activePane = "content"
+							m.updateLayout()
 						}
-						// Switch to content pane after successful command
-						m.activePane = "content"
-						m.updateLayout()
+					} else {
+						m.statusMessage = fmt.Sprintf("Selected: %s", selectedItem.title)
+					}
 
-					case typeSubHeader:
-						// Handle expandable items
-						if item.title == "Dedicated Servers" {
-							return m, tea.Batch(
-								m.expandServers(),
-								func() tea.Msg { return statusMsg(fmt.Sprintf("Loading servers...")) },
-							)
-						}
-
-					case typeServerItem:
-						// When clicking a server, show its details
-						m.statusMessage = fmt.Sprintf("Selected server: %s", item.title)
-						// TODO: Implement server details command
-						m.activePane = "content"
-						m.updateLayout()
+				case typeNormal:
+					if selectedItem.title == "Exit" {
+						return m, tea.Quit
 					}
 				}
 			}
@@ -399,6 +580,7 @@ func (m Model) View() string {
 	if !m.ready {
 		return "\n  Initializing... (resize window if needed)"
 	}
+	m.list.SetFilteringEnabled(false)
 
 	// Render menu and content
 	menuView := menuStyle.Render(m.list.View())
