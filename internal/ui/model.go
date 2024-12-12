@@ -47,8 +47,8 @@ var (
 	contentStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(inactiveBorderColor).
-			PaddingLeft(2).
-			PaddingRight(2).
+			PaddingLeft(1).
+			PaddingRight(1).
 			MarginLeft(2)
 
 	selectedItemStyle = lipgloss.NewStyle().
@@ -64,9 +64,10 @@ var (
 
 	// Status style
 	statusStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			PaddingLeft(1).
-			MarginTop(1)
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(inactiveBorderColor).
+			Padding(0, 0).
+			MarginTop(0)
 )
 
 // types and functions related to the menu pane
@@ -105,7 +106,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 		return
 	}
 
-	indent := strings.Repeat(" ", li.indent*2)
+	indent := strings.Repeat(" ", li.indent*1)
 	var symbol string
 
 	// Tree structure symbols
@@ -150,6 +151,8 @@ type CommandHandler func(*api.Client) commands.Command
 
 // Initialize creates a new model with initial state
 func Initialize(client *api.Client) Model {
+	logger.Log.Debug("Initializing model")
+
 	items := []list.Item{
 		listItem{
 			title:      "Account Information",
@@ -176,6 +179,9 @@ func Initialize(client *api.Client) Model {
 			selectable: true,
 		},
 	}
+
+	logger.Log.Debug("Creating initial menu items",
+		"count", len(items))
 
 	// Create custom delegate
 	delegate := itemDelegate{
@@ -207,20 +213,33 @@ func Initialize(client *api.Client) Model {
 	l.Styles.Title = titleStyle
 	l.DisableQuitKeybindings()
 
+	logger.Log.Debug("List initialized",
+		"title", l.Title,
+		"initial_size", fmt.Sprintf("%dx%d", l.Width(), l.Height()))
+
 	// Create the viewport
 	vp := viewport.New(0, 0)
 	vp.Style = contentStyle
 
+	logger.Log.Debug("Viewport initialized",
+		"initial_size", fmt.Sprintf("%dx%d", vp.Width, vp.Height))
+
 	// Configure logger
 	logger.Log.Configure("debug", "logs/ovh-terminal.log", false)
 
-	return Model{
+	model := Model{
 		list:       l,
 		viewport:   vp,
 		content:    "Welcome to OVH Terminal Client!\nUse arrow keys to navigate and Enter to select an option.",
 		apiClient:  client,
 		activePane: "menu", // Start with menu active
 	}
+
+	logger.Log.Debug("Model initialization complete",
+		"active_pane", model.activePane,
+		"ready", model.ready)
+
+	return model
 }
 
 // Map of available commands
@@ -237,101 +256,96 @@ func (m Model) Init() tea.Cmd {
 
 // Add a helper function to update the layout
 func (m *Model) updateLayout() {
+	logger.Log.Debug("Starting layout update",
+		"ready", m.ready,
+		"window_size", fmt.Sprintf("%dx%d", m.width, m.height))
+
 	if !m.ready {
 		return
 	}
 
-	// Start met 1 voor de titel
-	totalItems := 1
-	logger.Log.Debug("Layout update - Starting count", "title", "OVH Terminal Client")
+	// Calculate space needed for status bar including borders
+	statusBarSpace := 3
 
-	// Count root items and expanded children
-	currentItems := m.list.Items()
-	for _, item := range currentItems {
+	// Calculate space needed for title and borders
+	uiElementsSpace := 4 // title + borders + extra space
+
+	// Calculate available height for content
+	// Window height minus:
+	// - statusBarSpace (3)
+	// - uiElementsSpace (6)
+	availableContentHeight := m.height - statusBarSpace - uiElementsSpace
+
+	logger.Log.Debug("Height space calculations",
+		"window_height", m.height,
+		"status_space", statusBarSpace,
+		"ui_elements", uiElementsSpace,
+		"available_content", availableContentHeight)
+
+	// Calculate minimum needed height for menu items
+	var minimumContentHeight int
+	for _, item := range m.list.Items() {
 		if i, ok := item.(listItem); ok {
-			if i.indent == 0 {
-				totalItems++
-				logger.Log.Debug("Layout update - Counting root item",
-					"title", i.title,
-					"type", i.itemType,
-					"expanded", i.expanded)
+			minimumContentHeight++
+			logger.Log.Debug("Counting menu item",
+				"title", i.title,
+				"type", i.itemType,
+				"expanded", i.expanded)
 
-				if i.itemType == typeHeader && i.expanded {
-					switch i.title {
-					case "Account Information", "Bare Metal Cloud", "Web Cloud":
-						totalItems += 2
-						logger.Log.Debug("Layout update - Reserved space for children",
-							"parent", i.title,
-							"spaces", 2)
-					}
+			if i.expanded {
+				switch i.title {
+				case "Account Information", "Bare Metal Cloud", "Web Cloud":
+					minimumContentHeight += 2
+					logger.Log.Debug("Added space for children",
+						"parent", i.title,
+						"extra_height", 2)
 				}
 			}
 		}
 	}
 
-	// Add space for borders and padding
-	borderSpace := 4 // top border, bottom border, padding
-	totalSpace := totalItems + borderSpace
+	// Use the minimum required height if available height is not enough
+	contentHeight := availableContentHeight
+	if contentHeight < minimumContentHeight {
+		contentHeight = minimumContentHeight
+		logger.Log.Debug("Using minimum content height instead of available",
+			"available", availableContentHeight,
+			"minimum_needed", minimumContentHeight)
+	}
 
-	logger.Log.Debug("Layout update - Space calculation",
-		"items", totalItems,
-		"border_space", borderSpace,
-		"total_space", totalSpace)
+	// Calculate widths
+	// Total horizontal space:
+	// 2 (doc margins)
+	// + 2 (menu borders)
+	// + 2 (menu padding)
+	// + 2 (content margin)
+	// + 2 (content borders)
+	// + 2 (content padding)
+	// - 1 (extra space, dunno)
+	horizontalSpace := 11
+	menuBaseWidth := 32
+	contentWidth := m.width - menuBaseWidth - horizontalSpace
 
-	menuWidth := 34
-	contentWidth := m.width - menuWidth - 14
-
-	logger.Log.Debug("Layout update - Dimensions",
+	logger.Log.Debug("Width calculations",
 		"window_width", m.width,
-		"window_height", m.height,
-		"total_space_needed", totalSpace,
+		"menu_base", menuBaseWidth,
+		"horizontal_space", horizontalSpace,
 		"content_width", contentWidth)
 
-	// Start met window height als basis
-	effectiveHeight := m.height
-
-	// Bij uitgeklapte menu's, gebruik de window height plus ruimte voor extra items
-	hasExpandedMenus := false
-	for _, item := range currentItems {
-		if i, ok := item.(listItem); ok {
-			if i.itemType == typeHeader && i.expanded {
-				hasExpandedMenus = true
-				break
-			}
-		}
-	}
-
-	if hasExpandedMenus {
-		// Bij uitklappen: behoud minimaal de window height
-		if effectiveHeight < m.height {
-			effectiveHeight = m.height
-		}
-		logger.Log.Debug("Layout update - Using window height for expanded menu",
-			"height", effectiveHeight)
-	}
-
-	// Update dimensions
-	verticalSpace := 4
-	verticalSpace += 2
-
-	// Log final dimensions
-	logger.Log.Debug("Layout update - Final dimensions",
-		"menu_width", menuWidth-2,
-		"effective_height", effectiveHeight,
-		"vertical_space", verticalSpace,
-		"final_height", effectiveHeight-verticalSpace)
-
-	// Set sizes with the effective height
-	m.list.SetSize(menuWidth-2, effectiveHeight-verticalSpace)
+	// Set component sizes
+	m.list.SetSize(menuBaseWidth, contentHeight)
 	m.viewport.Width = contentWidth
-	m.viewport.Height = effectiveHeight - verticalSpace
+	m.viewport.Height = contentHeight
 
-	// Update border styles
-	m.updateBorderStyles()
-
+	// Update content if needed
 	if m.content != "" {
 		m.viewport.SetContent(m.content)
+		logger.Log.Debug("Updated viewport content", "content_length", len(m.content))
 	}
+
+	logger.Log.Debug("Layout update complete",
+		"menu_size", fmt.Sprintf("%dx%d", menuBaseWidth, contentHeight),
+		"viewport_size", fmt.Sprintf("%dx%d", contentWidth, contentHeight))
 }
 
 func (m *Model) updateMenuItems() {
@@ -441,16 +455,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateBorderStyles()
 			return m, nil
 
-		case "up", "k", "down", "j":
+		case "up", "k", "down", "j", "g", "G":
 			// Only handle navigation keys for active pane
 			if m.activePane == "menu" {
 				var cmd tea.Cmd
-				m.list, cmd = m.list.Update(msg)
-				return m, cmd
+				switch msg.String() {
+				case "g": // Go to top
+					m.list.Select(0)
+					m.statusMessage = "Navigated to top of menu"
+					return m, nil
+				case "G": // Go to bottom
+					m.list.Select(len(m.list.Items()) - 1)
+					m.statusMessage = "Navigated to bottom of menu"
+					return m, nil
+				default:
+					m.list, cmd = m.list.Update(msg)
+					return m, cmd
+				}
 			} else if m.activePane == "content" {
 				var cmd tea.Cmd
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
+				switch msg.String() {
+				case "g": // Go to top
+					m.viewport.GotoTop()
+					m.statusMessage = "Navigated to top of content"
+					return m, nil
+				case "G": // Go to bottom
+					m.viewport.GotoBottom()
+					m.statusMessage = "Navigated to bottom of content"
+					return m, nil
+				default:
+					m.viewport, cmd = m.viewport.Update(msg)
+					return m, cmd
+				}
 			}
 
 		case "enter":
@@ -515,54 +551,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-
-	// Update the content style to have a fixed width based on calculations
 	case tea.WindowSizeMsg:
+		logger.Log.Debug("Window size message received",
+			"width", msg.Width,
+			"height", msg.Height)
+
 		m.width = msg.Width
 		m.height = msg.Height
 
 		if m.width < 80 || m.height < 20 {
 			m.statusMessage = "Window too small - please resize"
 			m.ready = false
+			logger.Log.Debug("Window too small",
+				"width", m.width,
+				"height", m.height,
+				"minimum_width", 80,
+				"minimum_height", 20)
 			return m, nil
 		}
 
-		// Calculate dimensions with borders and margins in mind
-		menuWidth := 34 // Fixed menu width including borders
-
-		// Total horizontal space needed for borders and margins:
-		// - 2 for left document margin
-		// - 2 for menu borders
-		// - 2 for menu padding
-		// - 2 for content margin between menu and content
-		// - 2 for content borders
-		// - 4 for content padding (2 left, 2 right)
-		// Total: 14 characters
-
-		// Available width for content
-		contentWidth := m.width - menuWidth - 14
-
-		// Calculate vertical space needed:
-		// - 4 for top/bottom borders
-		// - 1 for status bar (if present)
-		// - 1 for status bar margin
-		verticalSpace := 4
-		if m.statusMessage != "" {
-			verticalSpace += 2
-		}
-
-		// Update menu dimensions (subtract borders)
-		m.list.SetSize(menuWidth-2, m.height-verticalSpace)
-
-		// Update content dimensions
-		m.viewport.Width = contentWidth
-		m.viewport.Height = m.height - verticalSpace
-
-		if !m.ready {
-			m.viewport.SetContent(m.content)
-		}
-
+		// Set ready flag and update layout
 		m.ready = true
+		m.updateLayout()
+
+		logger.Log.Debug("Window size handled",
+			"ready", m.ready,
+			"viewport_content", m.content != "")
 	}
 
 	// Update list and viewport
@@ -578,33 +592,73 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if !m.ready {
+		logger.Log.Debug("View called but not ready")
 		return "\n  Initializing... (resize window if needed)"
 	}
+
+	logger.Log.Debug("Starting view render",
+		"active_pane", m.activePane)
+
 	m.list.SetFilteringEnabled(false)
 
 	// Render menu and content
 	menuView := menuStyle.Render(m.list.View())
 	contentView := contentStyle.Render(m.viewport.View())
 
-	// Combine horizontally
+	logger.Log.Debug("Component dimensions",
+		"menu_height", lipgloss.Height(menuView),
+		"menu_width", lipgloss.Width(menuView),
+		"content_height", lipgloss.Height(contentView),
+		"content_width", lipgloss.Width(contentView))
+
+	// Combine menu and content horizontally
 	mainView := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		menuView,
 		contentView,
 	)
 
-	// Add status if present
-	if m.statusMessage != "" {
-		return docStyle.Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				mainView,
-				statusStyle.Render(m.statusMessage),
-			),
-		)
+	logger.Log.Debug("Main view dimensions",
+		"height", lipgloss.Height(mainView),
+		"width", lipgloss.Width(mainView))
+
+	// Always show status bar, with default text if no message
+	statusText := m.statusMessage
+	if statusText == "" {
+		// Show help text in status bar when no message
+		if m.activePane == "menu" {
+			statusText = "↑/k up • ↓/j down • g/G top/bottom • ? help"
+		} else {
+			statusText = "↑/k up • ↓/j down • g/G top/bottom • Tab to menu"
+		}
 	}
 
-	return docStyle.Render(mainView)
+	// Calculate status bar width:
+	// - Take main view width
+	// - Subtract 4 for the status bar borders and padding
+	mainViewWidth := lipgloss.Width(mainView)
+	statusBarWidth := mainViewWidth - 2
+	statusStyle = statusStyle.Width(statusBarWidth)
+
+	logger.Log.Debug("Status bar setup",
+		"text_length", len(statusText),
+		"main_view_width", mainViewWidth,
+		"status_bar_width", statusBarWidth)
+
+	// Render final view
+	finalView := docStyle.Render(
+		lipgloss.JoinVertical(
+			lipgloss.Left,
+			mainView,
+			statusStyle.Render(statusText),
+		),
+	)
+
+	logger.Log.Debug("Final view dimensions",
+		"height", lipgloss.Height(finalView),
+		"width", lipgloss.Width(finalView))
+
+	return finalView
 }
 
 type statusMsg string

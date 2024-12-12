@@ -8,10 +8,8 @@ TODO List:
 ---------
 
 1. UI Bugfixes
-   - Fix compile errors in UI model
-   - Ensure proper rendering of menu and content
-   - Fix layout and visibility issues
-   - Validate window size handling
+   - Equal sizes for menu and content boxes (menu is not tall enough yet)
+   - No nested content in the content area
 
 2. Command Integration
    - Implement MeCommand in UI context
