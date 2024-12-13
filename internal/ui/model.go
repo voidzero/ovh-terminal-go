@@ -33,7 +33,8 @@ var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(primaryColor).
-			PaddingLeft(1)
+			Align(lipgloss.Center).
+			Width(28)
 
 	// Menu styles
 	menuStyle = lipgloss.NewStyle().
