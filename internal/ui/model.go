@@ -245,6 +245,9 @@ var commandHandlers = map[string]CommandHandler{
 	"Account Information": func(client *api.Client) commands.Command {
 		return commands.NewMeCommand(client)
 	},
+	"API information": func(client *api.Client) commands.Command {
+		return commands.NewAPIInfoCommand(client)
+	},
 }
 
 // Init implements tea.Model
@@ -525,7 +528,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				case typeTreeItem, typeTreeLastItem:
 					// Execute commands for specific items
-					if selectedItem.title == "My information" {
+					switch selectedItem.title {
+					case "My information":
 						if handler, exists := commandHandlers["Account Information"]; exists {
 							m.activeCommand = handler(m.apiClient)
 							if output, err := m.activeCommand.Execute(); err != nil {
@@ -542,7 +546,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.activePane = "content"
 							m.updateLayout()
 						}
-					} else {
+					case "API information":
+						if handler, exists := commandHandlers["API information"]; exists {
+							m.activeCommand = handler(m.apiClient)
+							if output, err := m.activeCommand.Execute(); err != nil {
+								m.statusMessage = fmt.Sprintf("Error: %v", err)
+								m.content = fmt.Sprintf("Failed to execute command: %v", err)
+							} else {
+								m.statusMessage = fmt.Sprintf("Executed: %s", selectedItem.title)
+								contentWidth := m.width - menuStyle.GetHorizontalFrameSize()
+								m.content = lipgloss.NewStyle().
+									Width(contentWidth).
+									Align(lipgloss.Left).
+									Render(output)
+							}
+							m.activePane = "content"
+							m.updateLayout()
+						}
+					default:
 						m.statusMessage = fmt.Sprintf("Selected: %s", selectedItem.title)
 					}
 
