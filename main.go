@@ -6,11 +6,12 @@ import (
 	"os"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"ovh-terminal/internal/api"
 	"ovh-terminal/internal/config"
 	"ovh-terminal/internal/logger"
 	"ovh-terminal/internal/ui"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // printError formats and prints an error message to stderr
@@ -77,7 +78,7 @@ func main() {
 	}
 
 	// Validate credentials by attempting to get account info
-	log.Info("Validating API credentials...")
+	log.Info("Validating API credentials…")
 	if _, err := apiClient.GetAccountInfo(); err != nil {
 		log.Error("Failed to validate credentials", "error", err)
 

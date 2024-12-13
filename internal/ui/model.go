@@ -106,7 +106,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 		return
 	}
 
-	indent := strings.Repeat(" ", li.indent*1)
+	indent := strings.Repeat(" ", li.indent)
 	var symbol string
 
 	// Tree structure symbols
@@ -194,7 +194,7 @@ func Initialize(client *api.Client) Model {
 	delegate.Styles.SelectedTitle = selectedItemStyle
 	delegate.Styles.SelectedDesc = dimmedStyle
 	delegate.Styles.NormalTitle = normalItemStyle
-	delegate.Styles.NormalDesc = dimmedStyle.Copy()
+	delegate.Styles.NormalDesc = dimmedStyle
 
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
 		UnsetPadding().
@@ -217,20 +217,17 @@ func Initialize(client *api.Client) Model {
 		"title", l.Title,
 		"initial_size", fmt.Sprintf("%dx%d", l.Width(), l.Height()))
 
-	// Create the viewport
-	vp := viewport.New(0, 0)
-	vp.Style = contentStyle
-
-	logger.Log.Debug("Viewport initialized",
-		"initial_size", fmt.Sprintf("%dx%d", vp.Width, vp.Height))
-
 	// Configure logger
-	logger.Log.Configure("debug", "logs/ovh-terminal.log", false)
+	if err := logger.Log.Configure("debug", "logs/ovh-terminal.log", false); err != nil {
+		// Since we're in Initialize, we can only log to stdout
+		fmt.Printf("Failed to configure logger: %v\n", err)
+	}
 
+	welcomeLine := "Welcome to OVH Terminal Client!\nUse arrow keys to navigate and Enter to select an option."
 	model := Model{
-		list:       l,
-		viewport:   vp,
-		content:    "Welcome to OVH Terminal Client!\nUse arrow keys to navigate and Enter to select an option.",
+		list: l,
+		content: lipgloss.NewStyle().
+			Render(welcomeLine),
 		apiClient:  client,
 		activePane: "menu", // Start with menu active
 	}
@@ -268,12 +265,12 @@ func (m *Model) updateLayout() {
 	statusBarSpace := 3
 
 	// Calculate space needed for title and borders
-	uiElementsSpace := 4 // title + borders + extra space
+	uiElementsSpace := 2 // Just the borders, no extra space
 
 	// Calculate available height for content
 	// Window height minus:
 	// - statusBarSpace (3)
-	// - uiElementsSpace (6)
+	// - uiElementsSpace (4)
 	availableContentHeight := m.height - statusBarSpace - uiElementsSpace
 
 	logger.Log.Debug("Height space calculations",
@@ -593,7 +590,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	if !m.ready {
 		logger.Log.Debug("View called but not ready")
-		return "\n  Initializing... (resize window if needed)"
+		return "\n  Initializing… (resize window if needed)"
 	}
 
 	logger.Log.Debug("Starting view render",
