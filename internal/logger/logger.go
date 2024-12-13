@@ -1,3 +1,4 @@
+// internal/logger/logger.go
 package logger
 
 import (
@@ -118,4 +119,3 @@ func (l *Logger) log(level, msg string, keyvals ...interface{}) {
 		fmt.Fprintln(os.Stderr, logLine)
 	}
 }
-

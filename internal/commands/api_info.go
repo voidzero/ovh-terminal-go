@@ -1,3 +1,4 @@
+// internal/commands/api_info.go
 package commands
 
 import (
@@ -171,4 +172,3 @@ func formatCredential(cred Credential) string {
 
 	return details
 }
-

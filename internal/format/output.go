@@ -1,3 +1,4 @@
+// internal/format/output.go
 package format
 
 import (
@@ -73,4 +74,3 @@ func (f *OutputFormatter) String() string {
 
 	return output.String()
 }
-
