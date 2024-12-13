@@ -529,10 +529,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.activeCommand = handler(m.apiClient)
 							if output, err := m.activeCommand.Execute(); err != nil {
 								m.statusMessage = fmt.Sprintf("Error: %v", err)
-								m.viewport.SetContent(fmt.Sprintf("Failed to execute command: %v", err))
+								m.content = fmt.Sprintf("Failed to execute command: %v", err)
 							} else {
 								m.statusMessage = fmt.Sprintf("Executed: %s", selectedItem.title)
-								m.viewport.SetContent(output)
+								contentWidth := m.width - menuStyle.GetHorizontalFrameSize()
+								m.content = lipgloss.NewStyle().
+									Width(contentWidth).
+									Align(lipgloss.Left).
+									Render(output)
 							}
 							m.activePane = "content"
 							m.updateLayout()
