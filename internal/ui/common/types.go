@@ -57,24 +57,31 @@ type UIModel interface {
 	SetAPIClient(*api.Client)
 	GetActivePane() string
 	ToggleActivePane()
-	SetSize(width, height int)
+
+	// Size and state
 	GetWidth() int
 	GetHeight() int
+	SetSize(width, height int)
+	IsReady() bool
+
+	// Content management
 	SetContent(content string)
 	SetStatusMessage(msg string)
-	IsReady() bool
-	UpdateMenuItems()
-	ToggleItemExpanded(index int)
 
 	// List functionality
 	GetList() *list.Model
 	UpdateList(msg tea.Msg) tea.Cmd
 	SetList(*list.Model)
+	UpdateMenuItems()
+	ToggleItemExpanded(index int)
 
 	// Viewport functionality
 	GetViewport() *viewport.Model
 	UpdateViewport(msg tea.Msg) tea.Cmd
 	SetViewport(*viewport.Model)
+
+	// Help functionality
+	ToggleHelp()
 }
 
 // LayoutManager represents the layout management functionality

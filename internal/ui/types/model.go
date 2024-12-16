@@ -7,6 +7,7 @@ import (
 	"ovh-terminal/internal/commands"
 	"ovh-terminal/internal/ui/common"
 	"ovh-terminal/internal/ui/handlers"
+	"ovh-terminal/internal/ui/help"
 	"ovh-terminal/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -33,6 +34,8 @@ type Model struct {
 	ActivePane string
 	Width      int
 	Height     int
+
+	ShowHelp bool
 }
 
 // Ensure Model implements common.UIModel
@@ -237,19 +240,37 @@ func (m *Model) View() string {
 	statusStyle := styles.StatusStyle.Width(statusBarWidth)
 
 	// Render final view
-	return styles.DocStyle.Render(
+	finalView := styles.DocStyle.Render(
 		lipgloss.JoinVertical(
 			lipgloss.Left,
 			mainView,
 			statusStyle.Render(statusText),
 		),
 	)
+
+	// If help is enabled, overlay the help content
+	if m.ShowHelp {
+		return help.GetHelpContent(m.Width, m.Height)
+	}
+
+	return finalView
+}
+
+// ToggleHelp toggles the help overlay visibility
+func (m *Model) ToggleHelp() {
+	m.ShowHelp = !m.ShowHelp
+	if m.ShowHelp {
+		m.SetStatusMessage("Showing help (press F1 to close)")
+	} else {
+		m.SetStatusMessage("Help closed")
+	}
 }
 
 // NewModel creates a new Model instance
 func NewModel() *Model {
 	return &Model{
 		ActivePane: "menu",
+		ShowHelp:   false,
 	}
 }
 

@@ -24,6 +24,10 @@ func HandleKeyMsg(model common.UIModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return model, tea.Quit
 
+	case "f1":
+		model.ToggleHelp()
+		return model, nil
+
 	case "tab":
 		model.ToggleActivePane()
 		styles.UpdateBorderStyles(model.GetActivePane())

@@ -101,7 +101,7 @@ func (c *APIInfoCommand) Execute() (string, error) {
 		if appCreds, exists := credsByApp[app.ApplicationID]; exists {
 			for _, cred := range appCreds {
 				appSection.AddField(
-					fmt.Sprintf("\nCredential %d", cred.CredentialID),
+					fmt.Sprintf("Credential %d", cred.CredentialID),
 					formatCredential(cred),
 				)
 			}
@@ -164,6 +164,7 @@ func formatCredential(cred Credential) string {
 		for _, rule := range cred.Rules {
 			details += fmt.Sprintf("\n• %s %s", rule.Method, rule.Path)
 		}
+		details += "\n"
 	}
 
 	if cred.OVHSupport {

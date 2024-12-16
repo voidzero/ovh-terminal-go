@@ -51,7 +51,7 @@ func (f *OutputFormatter) String() string {
 		}
 
 		// Write section title
-		output.WriteString(fmt.Sprintf("\n%s\n", section.Title))
+		output.WriteString(fmt.Sprintf("%s\n", section.Title))
 		output.WriteString(strings.Repeat("=", len(section.Title)))
 		output.WriteString("\n")
 
