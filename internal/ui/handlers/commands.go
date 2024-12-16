@@ -6,6 +6,7 @@ import (
 
 	"ovh-terminal/internal/api"
 	"ovh-terminal/internal/commands"
+	"ovh-terminal/internal/logger"
 	"ovh-terminal/internal/ui/common"
 	"ovh-terminal/internal/ui/styles"
 )
@@ -41,19 +42,60 @@ func HandleCommand(model common.UIModel, item common.MenuItem) error {
 
 // handleHeaderCommand handles collapsible header items
 func handleHeaderCommand(model common.UIModel, item common.MenuItem) error {
+	logger.Log.Debug("Starting handleHeaderCommand",
+		"item", item.Title(),
+		"type", item.GetType(),
+		"expanded", item.IsExpanded())
+
 	// Get current list
 	list := model.GetList()
-
-	// First toggle the expanded state
 	currentIndex := list.Index()
+	headerTitle := item.Title() // Remember which header we're working with
+
+	// Toggle current item
 	model.ToggleItemExpanded(currentIndex)
 
-	// Update menu items to show/hide children
+	// Get fresh items after toggle
+	items := list.Items()
+	clickedExpanded := items[currentIndex].(common.MenuItem).IsExpanded()
+
+	// If we're expanding this header, collapse all others
+	if clickedExpanded {
+		for i, item := range items {
+			if menuItem, ok := item.(common.MenuItem); ok {
+				// Skip current item and non-headers
+				if i != currentIndex && menuItem.GetType() == common.TypeHeader &&
+					menuItem.IsExpanded() {
+					logger.Log.Debug("Collapsing other header",
+						"index", i,
+						"title", menuItem.Title())
+					// Collapse this header
+					model.ToggleItemExpanded(i)
+				}
+			}
+		}
+	}
+
+	// Update the menu structure
 	model.UpdateMenuItems()
+
+	// Find our header in the new menu structure
+	items = list.Items()
+	for i, menuItem := range items {
+		if mi, ok := menuItem.(common.MenuItem); ok {
+			if mi.Title() == headerTitle {
+				logger.Log.Debug("Found header in new structure",
+					"title", headerTitle,
+					"newIndex", i)
+				list.Select(i)
+				break
+			}
+		}
+	}
 
 	// Update status message
 	model.SetStatusMessage(fmt.Sprintf("Menu %s %s", item.Title(),
-		map[bool]string{true: "expanded", false: "collapsed"}[item.IsExpanded()]))
+		map[bool]string{true: "expanded", false: "collapsed"}[clickedExpanded]))
 
 	return nil
 }
