@@ -8,22 +8,19 @@ TODO List:
 ---------
 
 1. UI Bugfixes
-   - Equal sizes for menu and content boxes (menu is not tall enough yet)
-   - No nested content in the content area
+   - Use fancier colors, headers etc.
 
 2. Command Integration
    - Implement MeCommand in UI context
    - Add loading indicator for API calls
    - Show error messages in viewport
-   - Format command output in viewport
    - Handle command state and updates
 
 3. UI Improvements 
-   - Add vim-style navigation (j/k, g/G)
    - Implement mouse selection/scrolling
-   - Add help screen (trigger with '?')
-   - Show current account in status bar
-   - Add keyboard shortcut hints
+   - Add help screen (trigger with '?') -- done for the menu pane.
+   - Add keyboard shortcut hints -- done for the menu pane.
+   - Show current account in status bar -- not sure if that's the right place for this
 
 4. Extra Features
    - Implement account switching
@@ -38,6 +35,5 @@ Current status:
 - Logging system operational
 - API client functional
 - Basic UI structure present
-- Working on UI rendering and integration
 
 */
