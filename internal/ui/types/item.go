@@ -17,67 +17,81 @@ var _ common.MenuItem = ListItem{}
 
 // ListItem represents a single item in the menu
 type ListItem struct {
-	text       string          // The text to display
-	desc       string          // Description or additional info
-	itemType   common.ItemType // Type of the item
-	expanded   bool            // Whether a header is expanded
-	indent     int             // Indentation level
-	selectable bool            // Whether the item can be selected
+	text       string
+	desc       string
+	itemType   common.ItemType
+	expanded   bool
+	indent     int
+	selectable bool
 }
 
-// Title implements list.Item interface
-func (i ListItem) Title() string       { return i.text }
-func (i ListItem) Description() string { return i.desc }
-func (i ListItem) FilterValue() string { return i.text }
+// MenuItemOption is a function type for applying options to a ListItem
+type MenuItemOption func(*ListItem)
 
-// GetType returns the item's type
+// Interface implementation
+func (i ListItem) Title() string            { return i.text }
+func (i ListItem) Description() string      { return i.desc }
+func (i ListItem) FilterValue() string      { return i.text }
 func (i ListItem) GetType() common.ItemType { return i.itemType }
+func (i ListItem) IsExpanded() bool         { return i.expanded }
+func (i ListItem) GetIndent() int           { return i.indent }
+func (i ListItem) IsSelectable() bool       { return i.selectable }
 
-// IsExpanded returns whether the item is expanded
-func (i ListItem) IsExpanded() bool { return i.expanded }
-
-// GetIndent returns the item's indentation level
-func (i ListItem) GetIndent() int { return i.indent }
-
-// IsSelectable returns whether the item can be selected
-func (i ListItem) IsSelectable() bool { return i.selectable }
-
-// NewListItem creates a new ListItem with basic initialization
-func NewListItem(text string, itemType common.ItemType, desc string) ListItem {
-	return ListItem{
-		text:       text,
-		desc:       desc,
-		itemType:   itemType,
-		expanded:   false,
-		indent:     0,
-		selectable: true,
+// WithDesc sets the description
+func WithDesc(desc string) MenuItemOption {
+	return func(i *ListItem) {
+		i.desc = desc
 	}
 }
 
-// Builder methods for fluent interface
-
-// WithDesc sets the description and returns the modified item
-func (i ListItem) WithDesc(desc string) ListItem {
-	i.desc = desc
-	return i
+// WithIndent sets the indentation level
+func WithIndent(indent int) MenuItemOption {
+	return func(i *ListItem) {
+		i.indent = indent
+	}
 }
 
-// WithIndent sets the indentation level and returns the modified item
+// WithExpanded sets the expanded state
+func WithExpanded(expanded bool) MenuItemOption {
+	return func(i *ListItem) {
+		i.expanded = expanded
+	}
+}
+
+// WithSelectable sets whether the item can be selected
+func WithSelectable(selectable bool) MenuItemOption {
+	return func(i *ListItem) {
+		i.selectable = selectable
+	}
+}
+
+// NewListItem creates a new ListItem with options
+func NewListItem(text string, itemType common.ItemType, opts ...MenuItemOption) ListItem {
+	item := ListItem{
+		text:       text,
+		itemType:   itemType,
+		selectable: true, // default to selectable
+	}
+
+	for _, opt := range opts {
+		opt(&item)
+	}
+
+	return item
+}
+
+// For backward compatibility
 func (i ListItem) WithIndent(indent int) ListItem {
-	i.indent = indent
-	return i
+	newItem := i
+	WithIndent(indent)(&newItem)
+	return newItem
 }
 
-// WithExpanded sets the expanded state and returns the modified item
+// For compatibility with list.Item interface
 func (i ListItem) WithExpanded(expanded bool) list.Item {
-	i.expanded = expanded
-	return i
-}
-
-// WithSelectable sets whether the item can be selected and returns the modified item
-func (i ListItem) WithSelectable(selectable bool) ListItem {
-	i.selectable = selectable
-	return i
+	newItem := i
+	newItem.expanded = expanded
+	return newItem
 }
 
 // ItemDelegate handles the rendering of list items
@@ -93,13 +107,11 @@ func NewItemDelegate() ItemDelegate {
 		},
 	}
 
-	// Style the list items
 	delegate.Styles.SelectedTitle = styles.SelectedItemStyle
 	delegate.Styles.SelectedDesc = styles.DimmedStyle
 	delegate.Styles.NormalTitle = styles.NormalItemStyle
 	delegate.Styles.NormalDesc = styles.DimmedStyle
 
-	// Remove padding and margins
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
 		UnsetPadding().
 		UnsetMargins()
@@ -121,7 +133,6 @@ func (d ItemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 	indent := strings.Repeat(" ", li.indent)
 	var symbol string
 
-	// Tree structure symbols
 	var prefix string
 	switch li.itemType {
 	case common.TypeTreeItem:
@@ -148,14 +159,14 @@ func (d ItemDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 // CreateBaseMenuItems returns the initial menu items
 func CreateBaseMenuItems() []list.Item {
 	return []list.Item{
-		NewListItem("Account Information", common.TypeHeader, "").
-			WithSelectable(true),
-		NewListItem("Bare Metal Cloud", common.TypeHeader, "").
-			WithSelectable(true),
-		NewListItem("Web Cloud", common.TypeHeader, "").
-			WithSelectable(true),
-		NewListItem("Exit", common.TypeNormal, "Exit the application").
-			WithSelectable(true),
+		NewListItem("Account Information", common.TypeHeader,
+			WithSelectable(true)),
+		NewListItem("Bare Metal Cloud", common.TypeHeader,
+			WithSelectable(true)),
+		NewListItem("Web Cloud", common.TypeHeader,
+			WithSelectable(true)),
+		NewListItem("Exit", common.TypeNormal,
+			WithDesc("Exit the application"),
+			WithSelectable(true)),
 	}
 }
-

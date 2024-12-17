@@ -1,6 +1,4 @@
 // internal/ui/layout/layout.go
-
-// Package layout handles UI component positioning and sizing
 package layout
 
 import (
@@ -8,17 +6,27 @@ import (
 	"ovh-terminal/internal/ui/common"
 )
 
+// UI component dimensions
 const (
-	// Minimum window dimensions
-	MinWidth  = 80
-	MinHeight = 20
-
-	// Fixed UI element dimensions
-	StatusBarSpace  = 3  // Space needed for status bar including borders
-	UIElementsSpace = 2  // Space needed for title and borders
-	HorizontalSpace = 9  // Total horizontal space for margins/padding
-	MenuBaseWidth   = 32 // Base menu width
+	MinWidth  = 80 // Minimum window width
+	MinHeight = 20 // Minimum window height
+	MenuWidth = 32 // Base menu width
 )
+
+// UI spacing constants
+const (
+	StatusBarSpace  = 3 // Space for status bar including borders
+	UIElementsSpace = 2 // Space for title and borders
+	HorizontalSpace = 9 // Total horizontal space for margins/padding
+)
+
+// Dimensions represents UI component dimensions
+type Dimensions struct {
+	ContentWidth  int
+	ContentHeight int
+	MenuWidth     int
+	StatusWidth   int
+}
 
 // Manager handles layout calculations and updates
 type Manager struct {
@@ -32,39 +40,70 @@ func NewManager(model common.UIModel) *Manager {
 	}
 }
 
+// calculateDimensions computes dimensions for all UI components
+func (m *Manager) calculateDimensions() Dimensions {
+	totalWidth := m.model.GetWidth()
+	totalHeight := m.model.GetHeight()
+
+	dims := Dimensions{
+		MenuWidth:     MenuWidth,
+		ContentWidth:  totalWidth - MenuWidth - HorizontalSpace,
+		ContentHeight: totalHeight - StatusBarSpace - UIElementsSpace,
+		StatusWidth:   totalWidth - 2,
+	}
+
+	logger.Log.Debug("Layout dimensions calculated",
+		"total_width", totalWidth,
+		"total_height", totalHeight,
+		"content_width", dims.ContentWidth,
+		"content_height", dims.ContentHeight)
+
+	return dims
+}
+
 // Update recalculates and applies layout dimensions
 func (m *Manager) Update() {
-	logger.Log.Debug("Starting layout update",
-		"ready", m.model.IsReady())
-
 	if !m.model.IsReady() {
+		logger.Log.Debug("Model not ready, skipping layout update")
 		return
 	}
 
-	// Calculate and update content sizes
-	contentWidth := m.model.GetWidth() - MenuBaseWidth - HorizontalSpace
-	contentHeight := m.model.GetHeight() - StatusBarSpace - UIElementsSpace
-
-	logger.Log.Debug("Layout calculations",
-		"content_width", contentWidth,
-		"content_height", contentHeight)
-
-	if contentWidth > 0 && contentHeight > 0 {
-		list := m.model.GetList()
-		list.SetSize(MenuBaseWidth, contentHeight)
-
-		viewport := m.model.GetViewport()
-		viewport.Width = contentWidth
-		viewport.Height = contentHeight
+	dims := m.calculateDimensions()
+	if dims.ContentWidth <= 0 || dims.ContentHeight <= 0 {
+		logger.Log.Debug("Invalid dimensions, skipping update",
+			"content_width", dims.ContentWidth,
+			"content_height", dims.ContentHeight)
+		return
 	}
+
+	// Update list dimensions
+	list := m.model.GetList()
+	list.SetSize(dims.MenuWidth, dims.ContentHeight)
+
+	// Update viewport dimensions
+	viewport := m.model.GetViewport()
+	viewport.Width = dims.ContentWidth
+	viewport.Height = dims.ContentHeight
+
+	logger.Log.Debug("Layout updated successfully")
 }
 
 // ValidateWindowSize checks if the window size is sufficient
 func (m *Manager) ValidateWindowSize(width, height int) bool {
-	return width >= MinWidth && height >= MinHeight
+	isValid := width >= MinWidth && height >= MinHeight
+
+	if !isValid {
+		logger.Log.Debug("Window size validation failed",
+			"width", width,
+			"height", height,
+			"min_width", MinWidth,
+			"min_height", MinHeight)
+	}
+
+	return isValid
 }
 
-// CalculateStatusBarWidth calculates width for the status bar
+// CalculateStatusBarWidth returns the appropriate width for the status bar
 func (m *Manager) CalculateStatusBarWidth() int {
-	return m.model.GetWidth() - 2
+	return m.calculateDimensions().StatusWidth
 }

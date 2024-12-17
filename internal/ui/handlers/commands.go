@@ -26,7 +26,10 @@ var commandRegistry = map[string]CommandHandler{
 
 // HandleCommand processes a selected menu item and executes any associated command
 func HandleCommand(model common.UIModel, item common.MenuItem) error {
-	// Handle commands based on item type
+	logger.Log.Debug("Handling command",
+		"title", item.Title(),
+		"type", item.GetType())
+
 	switch item.GetType() {
 	case common.TypeHeader:
 		return handleHeaderCommand(model, item)
@@ -44,13 +47,12 @@ func HandleCommand(model common.UIModel, item common.MenuItem) error {
 func handleHeaderCommand(model common.UIModel, item common.MenuItem) error {
 	logger.Log.Debug("Starting handleHeaderCommand",
 		"item", item.Title(),
-		"type", item.GetType(),
 		"expanded", item.IsExpanded())
 
 	// Get current list
 	list := model.GetList()
 	currentIndex := list.Index()
-	headerTitle := item.Title() // Remember which header we're working with
+	headerTitle := item.Title()
 
 	// Toggle current item
 	model.ToggleItemExpanded(currentIndex)
@@ -59,24 +61,22 @@ func handleHeaderCommand(model common.UIModel, item common.MenuItem) error {
 	items := list.Items()
 	clickedExpanded := items[currentIndex].(common.MenuItem).IsExpanded()
 
-	// If we're expanding this header, collapse all others
+	// If we're expanding this header, collapse others
 	if clickedExpanded {
 		for i, item := range items {
 			if menuItem, ok := item.(common.MenuItem); ok {
-				// Skip current item and non-headers
 				if i != currentIndex && menuItem.GetType() == common.TypeHeader &&
 					menuItem.IsExpanded() {
 					logger.Log.Debug("Collapsing other header",
 						"index", i,
 						"title", menuItem.Title())
-					// Collapse this header
 					model.ToggleItemExpanded(i)
 				}
 			}
 		}
 	}
 
-	// Update the menu structure
+	// Update menu structure
 	model.UpdateMenuItems()
 
 	// Find our header in the new menu structure
@@ -129,3 +129,4 @@ func handleTreeCommand(model common.UIModel, item common.MenuItem) error {
 
 	return nil
 }
+

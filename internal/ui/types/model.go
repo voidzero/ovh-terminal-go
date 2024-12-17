@@ -125,24 +125,27 @@ func (m *Model) UpdateMenuItems() {
 				case "Account Information":
 					updatedItems = append(updatedItems,
 						NewListItem("My information", common.TypeTreeItem,
-							"View and manage my current information").WithIndent(1),
+							WithDesc("View and manage my current information"),
+							WithIndent(1)),
 						NewListItem("API information", common.TypeTreeLastItem,
-							"Information about applications and credentials").WithIndent(1),
-					)
+							WithDesc("Information about applications and credentials"),
+							WithIndent(1)))
 				case "Bare Metal Cloud":
 					updatedItems = append(updatedItems,
 						NewListItem("Dedicated Servers", common.TypeTreeItem,
-							"View and manage servers").WithIndent(1),
+							WithDesc("View and manage servers"),
+							WithIndent(1)),
 						NewListItem("Virtual Private Servers", common.TypeTreeLastItem,
-							"").WithIndent(1),
-					)
+							WithDesc(""),
+							WithIndent(1)))
 				case "Web Cloud":
 					updatedItems = append(updatedItems,
 						NewListItem("Domain names", common.TypeTreeItem,
-							"View and manage domain names").WithIndent(1),
+							WithDesc("View and manage domain names"),
+							WithIndent(1)),
 						NewListItem("Hosting plans", common.TypeTreeLastItem,
-							"").WithIndent(1),
-					)
+							WithDesc(""),
+							WithIndent(1)))
 				}
 			}
 		}

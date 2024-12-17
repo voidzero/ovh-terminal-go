@@ -1,9 +1,7 @@
-// Package handlers provides UI event handling
+// internal/ui/handlers/updates.go
 package handlers
 
 import (
-	"fmt"
-
 	"ovh-terminal/internal/logger"
 	"ovh-terminal/internal/ui/common"
 	"ovh-terminal/internal/ui/layout"
@@ -12,6 +10,25 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// KeyHandler defines a function type for handling key presses
+type KeyHandler func(common.UIModel) (tea.Model, tea.Cmd)
+
+// KeyMap defines keyboard mappings
+var KeyMap = map[string]KeyHandler{
+	"q":      handleQuit,
+	"ctrl+c": handleQuit,
+	"f1":     handleHelp,
+	"tab":    handlePaneToggle,
+	"enter":  handleEnter,
+	// "up":     handleUpNav,
+	// "k":      handleUpNav,
+	// "down":   handleDownNav,
+	// "j":      handleDownNav,
+	"g": handleTopNav,
+	"G": handleBottomNav,
+}
+
+// LayoutManager singleton
 var layoutManager *layout.Manager
 
 // HandleKeyMsg processes keyboard input messages
@@ -20,79 +37,31 @@ func HandleKeyMsg(model common.UIModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, nil
 	}
 
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return model, tea.Quit
-
-	case "f1":
-		model.ToggleHelp()
-		return model, nil
-
-	case "tab":
-		model.ToggleActivePane()
-		styles.UpdateBorderStyles(model.GetActivePane())
-		return model, nil
-
-	case "enter":
-		return handleEnterKey(model)
-
-	// Handle navigation keys
-	case "up", "k", "down", "j", "g", "G":
-		if model.GetActivePane() == "content" {
-			return handleContentNavigation(model, msg)
-		}
+	// Check for registered key handler
+	if handler, exists := KeyMap[msg.String()]; exists {
+		return handler(model)
 	}
 
 	return model, nil
 }
 
-// HandleWindowSizeMsg processes window resize messages
-func HandleWindowSizeMsg(model common.UIModel, msg tea.WindowSizeMsg) tea.Model {
-	logger.Log.Debug("Window size message received",
-		"width", msg.Width,
-		"height", msg.Height)
-
-	if layoutManager == nil {
-		layoutManager = layout.NewManager(model)
-	}
-
-	model.SetSize(msg.Width, msg.Height)
-
-	if !layoutManager.ValidateWindowSize(msg.Width, msg.Height) {
-		model.SetStatusMessage("Window too small - please resize")
-		return model
-	}
-
-	layoutManager.Update()
-	return model
+// Key handlers
+func handleQuit(model common.UIModel) (tea.Model, tea.Cmd) {
+	return model, tea.Quit
 }
 
-// handleContentNavigation handles navigation in the content pane
-func handleContentNavigation(model common.UIModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	vp := model.GetViewport()
-
-	switch msg.String() {
-	case "up", "k":
-		return model, model.UpdateViewport(tea.KeyMsg{Type: tea.KeyUp})
-	case "down", "j":
-		return model, model.UpdateViewport(tea.KeyMsg{Type: tea.KeyDown})
-	case "g":
-		// Simulate home key for top navigation
-		vp.GotoTop()
-		model.SetViewport(vp)
-		model.SetStatusMessage("Navigated to top of content")
-	case "G":
-		// Simulate end key for bottom navigation
-		vp.GotoBottom()
-		model.SetViewport(vp)
-		model.SetStatusMessage("Navigated to bottom of content")
-	}
-
+func handleHelp(model common.UIModel) (tea.Model, tea.Cmd) {
+	model.ToggleHelp()
 	return model, nil
 }
 
-// handleEnterKey processes enter key presses
-func handleEnterKey(model common.UIModel) (tea.Model, tea.Cmd) {
+func handlePaneToggle(model common.UIModel) (tea.Model, tea.Cmd) {
+	model.ToggleActivePane()
+	styles.UpdateBorderStyles(model.GetActivePane())
+	return model, nil
+}
+
+func handleEnter(model common.UIModel) (tea.Model, tea.Cmd) {
 	if model.GetActivePane() != "menu" {
 		return model, nil
 	}
@@ -122,15 +91,72 @@ func handleEnterKey(model common.UIModel) (tea.Model, tea.Cmd) {
 		}
 
 		// Update layout after command execution
-		if layoutManager != nil {
-			layoutManager.Update()
-		}
-
+		ensureLayoutManager(model).Update()
 		return model, nil
 	}
 
-	logger.Log.Debug("Selected item is not a MenuItem",
-		"type", fmt.Sprintf("%T", selectedItem))
-
 	return model, nil
+}
+
+// Navigation handlers
+func handleUpNav(model common.UIModel) (tea.Model, tea.Cmd) {
+	if model.GetActivePane() == "content" {
+		return model, model.UpdateViewport(tea.KeyMsg{Type: tea.KeyUp})
+	}
+	return model, model.UpdateList(tea.KeyMsg{Type: tea.KeyUp})
+}
+
+func handleDownNav(model common.UIModel) (tea.Model, tea.Cmd) {
+	if model.GetActivePane() == "content" {
+		return model, model.UpdateViewport(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	return model, model.UpdateList(tea.KeyMsg{Type: tea.KeyDown})
+}
+
+func handleTopNav(model common.UIModel) (tea.Model, tea.Cmd) {
+	if model.GetActivePane() == "content" {
+		vp := model.GetViewport()
+		vp.GotoTop()
+		model.SetViewport(vp)
+		model.SetStatusMessage("Navigated to top of content")
+		return model, nil
+	}
+	return model, model.UpdateList(tea.KeyMsg{Type: tea.KeyHome})
+}
+
+func handleBottomNav(model common.UIModel) (tea.Model, tea.Cmd) {
+	if model.GetActivePane() == "content" {
+		vp := model.GetViewport()
+		vp.GotoBottom()
+		model.SetViewport(vp)
+		model.SetStatusMessage("Navigated to bottom of content")
+		return model, nil
+	}
+	return model, model.UpdateList(tea.KeyMsg{Type: tea.KeyEnd})
+}
+
+// HandleWindowSizeMsg processes window resize messages
+func HandleWindowSizeMsg(model common.UIModel, msg tea.WindowSizeMsg) tea.Model {
+	logger.Log.Debug("Window size message received",
+		"width", msg.Width,
+		"height", msg.Height)
+
+	mgr := ensureLayoutManager(model)
+	model.SetSize(msg.Width, msg.Height)
+
+	if !mgr.ValidateWindowSize(msg.Width, msg.Height) {
+		model.SetStatusMessage("Window too small - please resize")
+		return model
+	}
+
+	mgr.Update()
+	return model
+}
+
+// ensureLayoutManager creates or returns the existing layout manager
+func ensureLayoutManager(model common.UIModel) *layout.Manager {
+	if layoutManager == nil {
+		layoutManager = layout.NewManager(model)
+	}
+	return layoutManager
 }

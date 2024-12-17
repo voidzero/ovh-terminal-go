@@ -1,73 +1,92 @@
 // internal/ui/styles/components.go
-// Package styles provides UI styling definitions
 package styles
 
 import "github.com/charmbracelet/lipgloss"
 
+// BaseStyle provides common styling options
+var BaseStyle = lipgloss.NewStyle()
+
+// BorderStyle provides common border styling
+var BorderStyle = BaseStyle.
+	BorderStyle(lipgloss.RoundedBorder())
+
 // Common style objects for UI components
 var (
 	// DocStyle defines the main document container style
-	DocStyle = lipgloss.NewStyle().
+	DocStyle = BaseStyle.
 			MarginLeft(1).
 			MarginRight(1)
 
 	// TitleStyle defines the style for section titles
-	TitleStyle = lipgloss.NewStyle().
+	TitleStyle = BaseStyle.
 			Bold(true).
-			Foreground(PrimaryColor).
+			Foreground(GetPrimaryColor()).
 			Align(lipgloss.Center).
 			Width(28)
 
 	// MenuStyle defines the style for the menu pane
-	MenuStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(ActiveBorderColor).
+	MenuStyle = BorderStyle.
+			BorderForeground(GetBorderActiveColor()).
 			PaddingLeft(1).
 			PaddingRight(1).
 			Width(32)
 
 	// ContentStyle defines the style for the content pane
-	ContentStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(InactiveBorderColor).
+	ContentStyle = BorderStyle.
+			BorderForeground(GetBorderNormalColor()).
 			PaddingLeft(1).
 			PaddingRight(1).
 			MarginLeft(2)
 
 	// SelectedItemStyle defines the style for selected menu items
-	SelectedItemStyle = lipgloss.NewStyle().
+	SelectedItemStyle = BaseStyle.
 				Bold(true).
-				Foreground(SelectedFg).
-				Background(SelectedBg)
+				Foreground(GetSelectionFg()).
+				Background(GetSelectionBg())
 
 	// NormalItemStyle defines the style for normal (unselected) menu items
-	NormalItemStyle = lipgloss.NewStyle().
-			Foreground(NormalTextColor)
+	NormalItemStyle = BaseStyle.
+			Foreground(GetNormalTextColor())
 
 	// DimmedStyle defines the style for less prominent text
-	DimmedStyle = lipgloss.NewStyle().
-			Foreground(DimmedTextColor)
+	DimmedStyle = BaseStyle.
+			Foreground(GetDimmedTextColor())
 
 	// StatusStyle defines the style for the status bar
-	StatusStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(InactiveBorderColor).
+	StatusStyle = BorderStyle.
+			BorderForeground(GetBorderNormalColor()).
 			Padding(0, 0).
 			MarginTop(0)
 )
 
+// UpdateComponentStyles refreshes all component styles with current colors
+func UpdateComponentStyles() {
+	TitleStyle = TitleStyle.
+		Bold(true).
+		Foreground(GetPrimaryColor()).
+		Align(lipgloss.Center).
+		Width(28)
+
+	SelectedItemStyle = BaseStyle.
+		Bold(true).
+		Foreground(GetSelectionFg()).
+		Background(GetSelectionBg())
+
+	NormalItemStyle = BaseStyle.
+		Foreground(GetNormalTextColor())
+
+	DimmedStyle = BaseStyle.
+		Foreground(GetDimmedTextColor())
+}
+
 // UpdateBorderStyles updates the border styles based on the active pane
 func UpdateBorderStyles(activePane string) {
 	if activePane == "menu" {
-		MenuStyle = MenuStyle.BorderForeground(ActiveBorderColor)
-		ContentStyle = ContentStyle.BorderForeground(InactiveBorderColor)
+		MenuStyle = MenuStyle.BorderForeground(GetBorderActiveColor())
+		ContentStyle = ContentStyle.BorderForeground(GetBorderNormalColor())
 	} else {
-		MenuStyle = MenuStyle.BorderForeground(InactiveBorderColor)
-		ContentStyle = ContentStyle.BorderForeground(ActiveBorderColor)
+		MenuStyle = MenuStyle.BorderForeground(GetBorderNormalColor())
+		ContentStyle = ContentStyle.BorderForeground(GetBorderActiveColor())
 	}
 }
 
-// WithWidth returns a new style with the specified width
-func WithWidth(style lipgloss.Style, width int) lipgloss.Style {
-	return style.Width(width)
-}
