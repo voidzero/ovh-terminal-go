@@ -20,6 +20,8 @@ go.work
 # Config and log files
 config.toml
 /logs/
+/ignore/
+/repomix-output.txt
 
 # IDE specific files
 .idea/
