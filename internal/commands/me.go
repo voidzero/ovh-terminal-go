@@ -11,28 +11,37 @@ import (
 	"ovh-terminal/internal/logger"
 )
 
-// SectionFormatter defines a function that formats a section of output
-type SectionFormatter func(*api.AccountInfo, *format.Section)
+// Configuration constants
+const (
+	keyValueSpacing = 4  // Extra spacing between key and value
+	maxWidth        = 80 // Maximum width of the output
+)
+
+// SectionOrder defines the display order
+var SectionOrder = []string{"account", "company", "personal", "address"}
+
+// sectionTitles maps section identifiers to display titles
+var sectionTitles = map[string]string{
+	"account":  "Account Details",
+	"company":  "Company Information",
+	"personal": "Personal Information",
+	"address":  "Address",
+}
 
 // MeCommand handles the account info display
 type MeCommand struct {
 	BaseCommand
-	client     *api.Client
-	formatters map[string]SectionFormatter
-	log        *logger.Logger
+	client *api.Client
+	log    *logger.Logger
 }
 
 // NewMeCommand creates a new me command instance
 func NewMeCommand(client *api.Client) *MeCommand {
-	cmd := &MeCommand{
+	return &MeCommand{
 		BaseCommand: NewBaseCommand(TypeInfo),
 		client:      client,
-		formatters:  make(map[string]SectionFormatter),
 		log:         logger.Log.With(map[string]interface{}{"command": "me"}),
 	}
-
-	cmd.registerFormatters()
-	return cmd
 }
 
 // Execute implements the Command interface
@@ -42,14 +51,10 @@ func (c *MeCommand) Execute() (string, error) {
 
 // ExecuteWithOptions implements the Command interface
 func (c *MeCommand) ExecuteWithOptions(opts ...CommandOption) (string, error) {
-	// Apply options to base command
 	for _, opt := range opts {
 		opt(&c.config)
 	}
-
-	return c.executeWithTimeout(context.Background(), func() (string, error) {
-		return c.executeCommand()
-	})
+	return c.executeWithTimeout(context.Background(), c.executeCommand)
 }
 
 // ExecuteAsync implements the Command interface
@@ -83,95 +88,74 @@ func (c *MeCommand) ExecuteAsync(ctx context.Context) (<-chan CommandResult, err
 func (c *MeCommand) executeCommand() (string, error) {
 	c.log.Debug("Executing me command")
 
-	// Get account info
 	info, err := c.client.GetAccountInfo()
 	if err != nil {
 		c.log.Error("Failed to get account info", "error", err)
 		return "", fmt.Errorf("failed to get account info: %w", err)
 	}
 
-	// Create output formatter with appropriate width
 	output := format.NewOutputFormatter(
-		format.WithMaxWidth(80),
+		format.WithMaxWidth(maxWidth),
 		format.WithSeparator("\n"),
 	)
 
-	// Apply each section formatter
-	for name, formatter := range c.formatters {
-		section := output.AddSection(getSectionTitle(name))
-		formatter(info, section)
+	// Create sections in defined order
+	for _, name := range SectionOrder {
+		section := output.AddSection(sectionTitles[name])
+		section.SetConfig(format.SectionConfig{
+			KeyValueSpacing: keyValueSpacing,
+			TitleDecorator:  "=",
+		})
+
+		switch name {
+		case "account":
+			formatAccountSection(info, section)
+		case "company":
+			formatCompanySection(info, section)
+		case "personal":
+			formatPersonalSection(info, section)
+		case "address":
+			formatAddressSection(info, section)
+		}
 	}
 
-	c.log.Debug("Me command completed successfully")
 	return output.String(), nil
 }
 
-// getSectionTitle returns the display title for a section
-func getSectionTitle(section string) string {
-	titles := map[string]string{
-		"personal": "Personal Information",
-		"company":  "Company Information",
-		"address":  "Address",
-		"account":  "Account Details",
-	}
-	return titles[section]
-}
-
-// registerFormatters sets up the section formatters
-func (c *MeCommand) registerFormatters() {
-	c.formatters["personal"] = formatPersonalInfo
-	c.formatters["company"] = formatCompanyInfo
-	c.formatters["address"] = formatAddressInfo
-	c.formatters["account"] = formatAccountDetails
-}
-
 // Section formatters
-func formatPersonalInfo(info *api.AccountInfo, section *format.Section) {
-	section.AddFields(map[string]string{
-		"Name":              fmt.Sprintf("%s %s", info.FirstName, info.Name),
-		"Email":             info.Email,
-		"Alternative Email": info.SpareEmail,
-		"Phone":             formatPhone(info.Phone, info.PhoneCountry),
-		"Language":          info.Language,
-	})
+func formatAccountSection(info *api.AccountInfo, section *format.Section) {
+	section.AddField("NIC Handle", info.NicHandle)
+	section.AddField("Customer Code", info.CustomerCode)
+	section.AddField("Account State", info.State)
+	section.AddField("KYC Validated", fmt.Sprintf("%v", info.KYCValidated))
 }
 
-func formatCompanyInfo(info *api.AccountInfo, section *format.Section) {
-	section.AddField("Organization", info.Organisation)
+func formatCompanySection(info *api.AccountInfo, section *format.Section) {
+	if info.Organisation != "" {
+		section.AddField("Organization", info.Organisation)
+	}
 	if info.Currency != nil {
-		section.AddField(
-			"Currency",
-			fmt.Sprintf("%s (%s)", info.Currency.Code, info.Currency.Symbol),
-		)
+		section.AddField("Currency", fmt.Sprintf("%s (%s)",
+			info.Currency.Code, info.Currency.Symbol))
 	}
 }
 
-func formatAddressInfo(info *api.AccountInfo, section *format.Section) {
-	section.AddFields(map[string]string{
-		"Street":      info.Address,
-		"City":        info.City,
-		"Postal Code": info.ZIP,
-		"Country":     info.Country,
-	})
-}
-
-func formatAccountDetails(info *api.AccountInfo, section *format.Section) {
-	section.AddFields(map[string]string{
-		"Customer Code": info.CustomerCode,
-		"NIC Handle":    info.NicHandle,
-		"Account State": info.State,
-		"KYC Validated": fmt.Sprintf("%v", info.KYCValidated),
-	})
-}
-
-// Helper function to format phone numbers
-func formatPhone(phone, country string) string {
-	if phone == "" {
-		return ""
+func formatPersonalSection(info *api.AccountInfo, section *format.Section) {
+	section.AddField("Name", fmt.Sprintf("%s %s", info.FirstName, info.Name))
+	section.AddField("Email", info.Email)
+	if info.Phone != "" {
+		phone := info.Phone
+		if info.PhoneCountry != "" {
+			phone = fmt.Sprintf("%s (%s)", phone, info.PhoneCountry)
+		}
+		section.AddField("Phone", phone)
 	}
-	if country != "" {
-		return fmt.Sprintf("%s (%s)", phone, country)
-	}
-	return phone
+	section.AddField("Language", info.Language)
 }
 
+func formatAddressSection(info *api.AccountInfo, section *format.Section) {
+	section.AddField("Street", info.Address)
+	section.AddField("Postal Code", info.ZIP)
+	section.AddField("City", info.City)
+	section.AddField("Country", info.Country)
+}

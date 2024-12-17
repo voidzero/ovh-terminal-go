@@ -32,7 +32,7 @@ var DefaultConfig = SectionConfig{
 	KeyAlignment:    AlignLeft,
 	ValueAlignment:  AlignLeft,
 	Indent:          0,
-	KeyValueSpacing: 1,
+	KeyValueSpacing: 2,
 }
 
 // Field represents a single key-value field
@@ -51,6 +51,11 @@ type Section struct {
 	Config   SectionConfig
 	parent   *OutputFormatter
 	maxWidth int
+}
+
+// SetConfig updates the section configuration
+func (s *Section) SetConfig(config SectionConfig) {
+	s.Config = config
 }
 
 // OutputFormatter handles formatted text output
@@ -112,7 +117,7 @@ func (f *OutputFormatter) AddSection(title string, config ...SectionConfig) *Sec
 
 // AddField adds a field to a section
 func (s *Section) AddField(key, value string) *Section {
-	if value != "" {
+	if value != "" || !s.Config.KeyAlignment.skipEmpty() {
 		s.Content = append(s.Content, Field{
 			Key:         key,
 			Value:       value,
@@ -127,27 +132,6 @@ func (s *Section) AddFields(fields map[string]string) *Section {
 	for key, value := range fields {
 		s.AddField(key, value)
 	}
-	return s
-}
-
-// AddMultiLineField adds a field with multiple value lines
-func (s *Section) AddMultiLineField(key string, values []string) *Section {
-	if len(values) > 0 {
-		s.Content = append(s.Content, Field{
-			Key:         key,
-			ValueLines:  values,
-			SkipIfEmpty: true,
-		})
-	}
-	return s
-}
-
-// AddDivider adds a decorative line
-func (s *Section) AddDivider(char string) *Section {
-	s.Content = append(s.Content, Field{
-		Value:        strings.Repeat(char, s.maxWidth),
-		IsDecorative: true,
-	})
 	return s
 }
 
@@ -175,9 +159,24 @@ func align(text string, alignment Alignment, width int) string {
 	}
 }
 
+// skipEmpty returns whether empty fields should be skipped based on alignment
+func (a Alignment) skipEmpty() bool {
+	return a == AlignLeft
+}
+
 // String formats the entire output
 func (f *OutputFormatter) String() string {
 	var output strings.Builder
+
+	// First find maximum key length across all sections
+	maxKeyLength := 0
+	for _, section := range f.sections {
+		for _, field := range section.Content {
+			if !field.IsDecorative && len(field.Key) > maxKeyLength {
+				maxKeyLength = len(field.Key)
+			}
+		}
+	}
 
 	for i, section := range f.sections {
 		if i > 0 {
@@ -196,17 +195,9 @@ func (f *OutputFormatter) String() string {
 			}
 		}
 
-		// Find maximum key length for alignment
-		maxKeyLength := 0
-		for _, field := range section.Content {
-			if !field.IsDecorative && len(field.Key) > maxKeyLength {
-				maxKeyLength = len(field.Key)
-			}
-		}
-
 		// Write fields
 		indent := strings.Repeat(" ", section.Config.Indent)
-		for i, field := range section.Content {
+		for _, field := range section.Content {
 			if field.SkipIfEmpty && field.Value == "" && len(field.ValueLines) == 0 {
 				continue
 			}
@@ -219,10 +210,10 @@ func (f *OutputFormatter) String() string {
 
 				if len(field.ValueLines) > 0 {
 					// Handle multi-line values
-					output.WriteString(fmt.Sprintf("%s%s%s%s\n", indent, key, spacing, field.ValueLines[0]))
+					output.WriteString(fmt.Sprintf("%s%s%s%s", indent, key, spacing, field.ValueLines[0]))
 					for _, line := range field.ValueLines[1:] {
 						padding := strings.Repeat(" ", maxKeyLength+section.Config.KeyValueSpacing)
-						output.WriteString(fmt.Sprintf("%s%s%s\n", indent, padding, line))
+						output.WriteString(fmt.Sprintf("\n%s%s%s", indent, padding, line))
 					}
 				} else {
 					// Handle single-line value
@@ -232,9 +223,7 @@ func (f *OutputFormatter) String() string {
 				}
 			}
 
-			if i < len(section.Content)-1 {
-				output.WriteString("\n")
-			}
+			output.WriteString("\n")
 		}
 	}
 
