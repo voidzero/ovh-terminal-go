@@ -1,8 +1,9 @@
 // internal/ui/types/model.go
-// Package types provides concrete implementations of UI types
 package types
 
 import (
+	"sort"
+
 	"ovh-terminal/internal/api"
 	"ovh-terminal/internal/commands"
 	"ovh-terminal/internal/ui/common"
@@ -83,17 +84,14 @@ func (m *Model) IsReady() bool {
 	return m.Ready
 }
 
-// GetWidth returns the model's width
 func (m *Model) GetWidth() int {
 	return m.Width
 }
 
-// GetHeight returns the model's height
 func (m *Model) GetHeight() int {
 	return m.Height
 }
 
-// Additional UIModel interface methods
 func (m *Model) GetList() *list.Model {
 	return &m.List
 }
@@ -106,57 +104,6 @@ func (m *Model) UpdateList(msg tea.Msg) tea.Cmd {
 
 func (m *Model) SetList(list *list.Model) {
 	m.List = *list
-}
-
-func (m *Model) UpdateMenuItems() {
-	var updatedItems []list.Item
-	currentItems := m.List.Items()
-
-	// Build new list preserving expanded states
-	for _, item := range currentItems {
-		curr := item.(ListItem)
-
-		if curr.GetIndent() == 0 {
-			updatedItems = append(updatedItems, curr)
-
-			// If this is an expanded header, add its children
-			if curr.GetType() == common.TypeHeader && curr.IsExpanded() {
-				switch curr.Title() {
-				case "Account Information":
-					updatedItems = append(updatedItems,
-						NewListItem("My information", common.TypeTreeItem,
-							WithDesc("View and manage my current information"),
-							WithIndent(1)),
-						NewListItem("API information", common.TypeTreeLastItem,
-							WithDesc("Information about applications and credentials"),
-							WithIndent(1)))
-				case "Bare Metal Cloud":
-					updatedItems = append(updatedItems,
-						NewListItem("Dedicated Servers", common.TypeTreeItem,
-							WithDesc("View and manage servers"),
-							WithIndent(1)),
-						NewListItem("Virtual Private Servers", common.TypeTreeLastItem,
-							WithDesc(""),
-							WithIndent(1)))
-				case "Web Cloud":
-					updatedItems = append(updatedItems,
-						NewListItem("Domain names", common.TypeTreeItem,
-							WithDesc("View and manage domain names"),
-							WithIndent(1)),
-						NewListItem("Hosting plans", common.TypeTreeLastItem,
-							WithDesc(""),
-							WithIndent(1)))
-				}
-			}
-		}
-	}
-
-	// Preserve current selection if possible
-	currentIndex := m.List.Index()
-	m.List.SetItems(updatedItems)
-	if currentIndex < len(updatedItems) {
-		m.List.Select(currentIndex)
-	}
 }
 
 func (m *Model) GetViewport() *viewport.Model {
@@ -173,13 +120,147 @@ func (m *Model) SetViewport(vp *viewport.Model) {
 	m.Viewport = *vp
 }
 
-// Tea.Model implementation
+// UpdateMenuItems refreshes all menu items while preserving states
+func (m *Model) UpdateMenuItems() {
+	var updatedItems []list.Item
+	currentItems := m.List.Items()
 
+	// Helper to add child items for a header
+	addChildItems := func(items []*ListItem) {
+		for i, item := range items {
+			itemType := common.TypeTreeItem
+			if i == len(items)-1 {
+				itemType = common.TypeTreeLastItem
+			}
+
+			newItem := NewListItem(
+				item.Title(),
+				itemType,
+				WithDesc(item.Description()),
+				WithIndent(item.GetIndent()),
+				WithSelectable(item.IsSelectable()),
+			)
+			updatedItems = append(updatedItems, newItem)
+		}
+	}
+
+	// Build new list preserving expanded states
+	for _, item := range currentItems {
+		curr, ok := item.(*ListItem)
+		if !ok {
+			continue
+		}
+
+		if curr.GetIndent() == 0 {
+			updatedItems = append(updatedItems, curr)
+
+			if curr.GetType() == common.TypeHeader && curr.IsExpanded() {
+				switch curr.Title() {
+				case "Account Information":
+					addChildItems([]*ListItem{
+						NewListItem("My information", common.TypeTreeItem,
+							WithDesc("View and manage my current information"),
+							WithIndent(1)),
+						NewListItem("API information", common.TypeTreeLastItem,
+							WithDesc("Information about applications and credentials"),
+							WithIndent(1)),
+					})
+
+				case "Bare Metal Cloud":
+					// Find current states
+					var isDedServersExpanded bool
+					var dedServersItem *ListItem
+					for _, oldItem := range currentItems {
+						if old, ok := oldItem.(*ListItem); ok {
+							if old.GetIndent() == 1 && old.Title() == "Dedicated Servers" {
+								isDedServersExpanded = old.IsExpanded()
+								dedServersItem = old
+								break
+							}
+						}
+					}
+
+					// Add Dedicated Servers header
+					if dedServersItem == nil {
+						dedServersItem = NewListItem("Dedicated Servers", common.TypeHeader,
+							WithDesc("View and manage servers"),
+							WithIndent(1),
+							WithExpanded(isDedServersExpanded))
+					}
+					updatedItems = append(updatedItems, dedServersItem)
+
+					// If Dedicated Servers is expanded, add servers
+					if isDedServersExpanded {
+						// Get server list via command
+						cmd := commands.NewServerCommand(m.apiClient)
+						servers, err := cmd.ListServers()
+						if err != nil {
+							updatedItems = append(updatedItems,
+								NewListItem("Error loading servers", common.TypeTreeLastItem,
+									WithDesc(err.Error()),
+									WithIndent(2)))
+						} else {
+							// Convert map to sorted slice
+							type serverInfo struct {
+								name string
+								id   string
+							}
+							serverList := make([]serverInfo, 0, len(servers))
+							for id, name := range servers {
+								serverList = append(serverList, serverInfo{name, id})
+							}
+							// Sort servers by name
+							sort.Slice(serverList, func(i, j int) bool {
+								return serverList[i].name < serverList[j].name
+							})
+
+							// Add servers as menu items
+							for i, server := range serverList {
+								itemType := common.TypeTreeItem
+								if i == len(serverList)-1 {
+									itemType = common.TypeTreeLastItem
+								}
+								updatedItems = append(updatedItems,
+									NewListItem(server.name, itemType,
+										WithDesc(server.id),
+										WithIndent(2)))
+							}
+						}
+					}
+
+					// Add Virtual Private Servers
+					updatedItems = append(updatedItems,
+						NewListItem("Virtual Private Servers", common.TypeTreeLastItem,
+							WithDesc(""),
+							WithIndent(1)))
+
+				case "Web Cloud":
+					addChildItems([]*ListItem{
+						NewListItem("Domain names", common.TypeTreeItem,
+							WithDesc("View and manage domain names"),
+							WithIndent(1)),
+						NewListItem("Hosting plans", common.TypeTreeLastItem,
+							WithDesc(""),
+							WithIndent(1)),
+					})
+				}
+			}
+		}
+	}
+
+	// Preserve current selection if possible
+	currentIndex := m.List.Index()
+	m.List.SetItems(updatedItems)
+	if currentIndex < len(updatedItems) {
+		m.List.Select(currentIndex)
+	}
+}
+
+// Tea.Model implementation
 func (m *Model) Init() tea.Cmd {
 	return tea.EnterAltScreen
 }
 
-// Update implements tea.Model
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -259,21 +340,12 @@ func (m *Model) View() string {
 	return finalView
 }
 
-// ToggleHelp toggles the help overlay visibility
 func (m *Model) ToggleHelp() {
 	m.ShowHelp = !m.ShowHelp
 	if m.ShowHelp {
 		m.SetStatusMessage("Showing help (press F1 to close)")
 	} else {
 		m.SetStatusMessage("Help closed")
-	}
-}
-
-// NewModel creates a new Model instance
-func NewModel() *Model {
-	return &Model{
-		ActivePane: "menu",
-		ShowHelp:   false,
 	}
 }
 
@@ -284,7 +356,7 @@ func (m *Model) ToggleItemExpanded(index int) {
 		return
 	}
 
-	if listItem, ok := items[index].(ListItem); ok {
+	if listItem, ok := items[index].(*ListItem); ok {
 		// Create a new item with toggled expanded state
 		newItem := listItem.WithExpanded(!listItem.IsExpanded())
 
@@ -293,5 +365,13 @@ func (m *Model) ToggleItemExpanded(index int) {
 		copy(newItems, items)
 		newItems[index] = newItem
 		m.List.SetItems(newItems)
+	}
+}
+
+// NewModel creates a new Model instance
+func NewModel() *Model {
+	return &Model{
+		ActivePane: "menu",
+		ShowHelp:   false,
 	}
 }

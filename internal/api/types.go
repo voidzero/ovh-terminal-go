@@ -82,28 +82,53 @@ const (
 	ServerStateMaintenance ServerState = "maintenance"
 )
 
-// ServerInfo represents dedicated server information
-type ServerInfo struct {
-	Name         string      `json:"name"`
-	DisplayName  string      `json:"displayName"`
-	IP           string      `json:"ip"`
-	State        ServerState `json:"state"`
-	Datacenter   string      `json:"datacenter"`
-	SupportLevel string      `json:"supportLevel"`
-	Professional bool        `json:"professional"`
-	LastUpdate   time.Time   `json:"lastUpdate"`
+// IAMInfo represents IAM-related server information
+type IAMInfo struct {
+	DisplayName string `json:"displayName"`
+	ID          string `json:"id"`
+	URN         string `json:"urn"`
 }
 
-// IsOperational checks if the server is in a working state
+// ServerInfo represents dedicated server information
+type ServerInfo struct {
+	Name             string      `json:"name"`
+	IP               string      `json:"ip"`
+	State            ServerState `json:"state"`
+	PowerState       string      `json:"powerState"`
+	Datacenter       string      `json:"datacenter"`
+	SupportLevel     string      `json:"supportLevel"`
+	Professional     bool        `json:"professionalUse"`
+	CommercialRange  string      `json:"commercialRange"`
+	Reverse          string      `json:"reverse"`
+	AvailabilityZone string      `json:"availabilityZone"`
+	Region           string      `json:"region"`
+	Rack             string      `json:"rack"`
+	OS               string      `json:"os"`
+	Monitoring       bool        `json:"monitoring"`
+	LinkSpeed        int         `json:"linkSpeed"`
+	NoIntervention   bool        `json:"noIntervention"`
+	IAM              *IAMInfo    `json:"iam"`
+} // IsOperational checks if the server is in a working state
 func (s *ServerInfo) IsOperational() bool {
 	return s.State == ServerStateActive
 }
 
-// GetDisplayTitle returns the display name or server name
+// GetDisplayTitle returns the best available name for the server
 func (s *ServerInfo) GetDisplayTitle() string {
-	if s.DisplayName != "" {
-		return s.DisplayName
+	// First try IAM display name
+	if s.IAM != nil && s.IAM.DisplayName != "" {
+		return s.IAM.DisplayName
 	}
+
+	// Then try reverse DNS (without trailing dot)
+	if s.Reverse != "" {
+		if s.Reverse[len(s.Reverse)-1] == '.' {
+			return s.Reverse[:len(s.Reverse)-1]
+		}
+		return s.Reverse
+	}
+
+	// Finally fall back to server name
 	return s.Name
 }
 
@@ -176,4 +201,3 @@ func (i *IPInfo) GetFormattedDescription() string {
 	}
 	return "No description available"
 }
-

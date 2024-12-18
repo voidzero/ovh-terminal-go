@@ -34,11 +34,8 @@ func Initialize(client *api.Client) *types.Model {
 	items := types.CreateBaseMenuItems()
 	logger.Log.Debug("Created initial menu items", "count", len(items))
 
-	// Create custom delegate
-	delegate := types.NewItemDelegate()
-
 	// Create and configure the list
-	list := list.New(items, delegate, 0, 0)
+	list := list.New(items, types.NewDefaultDelegate(), 0, 0)
 	list.SetShowTitle(true)
 	list.Title = "OVH Terminal Client"
 	list.SetShowStatusBar(false)
