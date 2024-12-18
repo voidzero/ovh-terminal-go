@@ -158,7 +158,7 @@ func (d DefaultDelegate) Render(w io.Writer, m list.Model, index int, item list.
 		// Get parent continuation markers
 		markers := getParentMarkers(index, listItem.GetIndent())
 
-		// Add spacing and vertical lines for each level
+		// Add spacing and vertical lines for each level except the last
 		for i := 0; i < listItem.GetIndent()-1; i++ {
 			if markers[i] {
 				prefixParts = append(prefixParts, "│  ")
@@ -167,11 +167,45 @@ func (d DefaultDelegate) Render(w io.Writer, m list.Model, index int, item list.
 			}
 		}
 
-		// Add the appropriate connector
-		if hasNextSibling(index, listItem.GetIndent()) {
-			prefixParts = append(prefixParts, "├─")
+		// Special handling for the last item in a branch
+		hasNext := hasNextSibling(index, listItem.GetIndent())
+
+		if listItem.itemType == common.TypeHeader {
+			// For headers:
+			// - Always use ├─ if the header is expanded (since it has children)
+			// - Use └─ only for collapsed headers with no next sibling
+			// - Use ├─ for collapsed headers with next sibling
+			if listItem.expanded || hasNext {
+				prefixParts = append(prefixParts, "├─")
+			} else {
+				prefixParts = append(prefixParts, "└─")
+			}
 		} else {
-			prefixParts = append(prefixParts, "└─")
+			// For regular items
+			if !hasNext {
+				// Check if this is the last item of the last subgroup
+				isLastSubgroup := true
+				for i := index + 1; i < len(m.Items()); i++ {
+					if next, ok := m.Items()[i].(*ListItem); ok {
+						if next.GetIndent() >= listItem.GetIndent() {
+							isLastSubgroup = false
+							break
+						}
+					}
+				}
+
+				if isLastSubgroup {
+					if len(prefixParts) > 0 {
+						// Replace last vertical line with a corner
+						prefixParts[len(prefixParts)-1] = "└──"
+					}
+					prefixParts = append(prefixParts, "┴─")
+				} else {
+					prefixParts = append(prefixParts, "└─")
+				}
+			} else {
+				prefixParts = append(prefixParts, "├─")
+			}
 		}
 	}
 
@@ -232,4 +266,3 @@ func CreateBaseMenuItems() []list.Item {
 	}
 	return items
 }
-

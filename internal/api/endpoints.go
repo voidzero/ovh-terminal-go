@@ -18,6 +18,7 @@ const (
 	ResourceIP      ResourceType = "ip"
 	ResourceBilling ResourceType = "billing"
 	ResourceSupport ResourceType = "support"
+	ResourceVPS     ResourceType = "vps"
 )
 
 // Endpoint definitions for OVH API
@@ -30,6 +31,7 @@ const (
 	endpointIP              = "/ip"
 	endpointBilling         = "/me/bill"
 	endpointSupport         = "/support"
+	endpointVPS             = "/vps"
 )
 
 // EndpointMap maps resource types to their base endpoints
@@ -173,4 +175,3 @@ func GetBillingEndpoint(billID string) string {
 func GetSupportTicketEndpoint(ticketID string) string {
 	return NewEndpointBuilder(ResourceSupport).WithID(ticketID).Build()
 }
-

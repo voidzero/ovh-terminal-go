@@ -85,3 +85,22 @@ func (c *Client) GetIPInfo(ip string) (*IPInfo, error) {
 	return &info, nil
 }
 
+// ListVPS retrieves all VPS instances
+func (c *Client) ListVPS() ([]string, error) {
+	var vpsIDs []string
+	err := c.Get("/vps", &vpsIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list VPS instances: %w", err)
+	}
+	return vpsIDs, nil
+}
+
+// GetVPSInfo retrieves information about a specific VPS
+func (c *Client) GetVPSInfo(vpsID string) (*VPSInfo, error) {
+	var info VPSInfo
+	err := c.Get(fmt.Sprintf("/vps/%s", vpsID), &info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VPS info for %s: %w", vpsID, err)
+	}
+	return &info, nil
+}

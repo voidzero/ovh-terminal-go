@@ -6,6 +6,7 @@ import (
 
 	"ovh-terminal/internal/api"
 	"ovh-terminal/internal/commands"
+	"ovh-terminal/internal/logger"
 	"ovh-terminal/internal/ui/common"
 	"ovh-terminal/internal/ui/handlers"
 	"ovh-terminal/internal/ui/help"
@@ -228,11 +229,75 @@ func (m *Model) UpdateMenuItems() {
 						}
 					}
 
-					// Add Virtual Private Servers
-					updatedItems = append(updatedItems,
-						NewListItem("Virtual Private Servers", common.TypeTreeLastItem,
-							WithDesc(""),
-							WithIndent(1)))
+					// Add Virtual Private Servers with same expansion logic as Dedicated Servers
+					var isVPSExpanded bool
+					var vpsItem *ListItem
+					for _, oldItem := range currentItems {
+						if old, ok := oldItem.(*ListItem); ok {
+							if old.GetIndent() == 1 && old.Title() == "Virtual Private Servers" {
+								isVPSExpanded = old.IsExpanded()
+								vpsItem = old
+								break
+							}
+						}
+					}
+
+					// Add VPS header
+					if vpsItem == nil {
+						vpsItem = NewListItem("Virtual Private Servers", common.TypeHeader,
+							WithDesc("Virtual Private Servers"),
+							WithIndent(1),
+							WithExpanded(isVPSExpanded))
+					}
+					updatedItems = append(updatedItems, vpsItem)
+
+					// If VPS section is expanded, add VPS instances
+					if isVPSExpanded {
+						// Get VPS list via API
+						vpsServers, err := m.apiClient.ListVPS()
+						if err != nil {
+							updatedItems = append(updatedItems,
+								NewListItem("Error loading VPS instances", common.TypeTreeLastItem,
+									WithDesc(err.Error()),
+									WithIndent(2)))
+						} else {
+							// Convert to sorted slice with display names
+							type vpsInfo struct {
+								name string
+								id   string
+							}
+							vpsList := make([]vpsInfo, 0, len(vpsServers))
+							for _, id := range vpsServers {
+								info, err := m.apiClient.GetVPSInfo(id)
+								if err != nil {
+									logger.Log.Error("Failed to get VPS info",
+										"id", id,
+										"error", err)
+									continue
+								}
+								vpsList = append(vpsList, vpsInfo{
+									name: info.GetDisplayTitle(),
+									id:   id,
+								})
+							}
+							// Sort VPS instances by name
+							sort.Slice(vpsList, func(i, j int) bool {
+								return vpsList[i].name < vpsList[j].name
+							})
+
+							// Add VPS instances as menu items
+							for i, vps := range vpsList {
+								itemType := common.TypeTreeItem
+								if i == len(vpsList)-1 {
+									itemType = common.TypeTreeLastItem
+								}
+								updatedItems = append(updatedItems,
+									NewListItem(vps.name, itemType,
+										WithDesc(vps.id),
+										WithIndent(2)))
+							}
+						}
+					}
 
 				case "Web Cloud":
 					addChildItems([]*ListItem{

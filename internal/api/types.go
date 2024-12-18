@@ -201,3 +201,47 @@ func (i *IPInfo) GetFormattedDescription() string {
 	}
 	return "No description available"
 }
+
+// VPSModelInfo represents VPS model information
+type VPSModelInfo struct {
+	MaximumAdditionnalIp int      `json:"maximumAdditionnalIp"`
+	AvailableOptions     []string `json:"availableOptions"`
+	Offer                string   `json:"offer"`
+	Name                 string   `json:"name"`
+	Datacenter           []string `json:"datacenter"`
+	Memory               int      `json:"memory"`
+	Version              string   `json:"version"`
+	Disk                 int      `json:"disk"`
+	VCore                int      `json:"vcore"`
+}
+
+// VPSInfo represents VPS information from the API
+type VPSInfo struct {
+	SLAMonitoring      bool         `json:"slaMonitoring"`
+	Zone               string       `json:"zone"`
+	State              string       `json:"state"`
+	OfferType          string       `json:"offerType"`
+	MemoryLimit        int          `json:"memoryLimit"`
+	MonitoringIPBlocks []string     `json:"monitoringIpBlocks"`
+	Model              VPSModelInfo `json:"model"`
+	VCore              int          `json:"vcore"`
+	Cluster            string       `json:"cluster"`
+	DisplayName        string       `json:"displayName"`
+	Keymap             *string      `json:"keymap"`
+	NetbootMode        string       `json:"netbootMode"`
+	Name               string       `json:"name"`
+	IAM                *IAMInfo     `json:"iam"`
+}
+
+// GetDisplayTitle returns the best available name for the VPS
+func (v *VPSInfo) GetDisplayTitle() string {
+	if v.DisplayName != "" {
+		return v.DisplayName
+	}
+	return v.Name
+}
+
+// IsOperational checks if the VPS is in a working state
+func (v *VPSInfo) IsOperational() bool {
+	return v.State == "running"
+}
